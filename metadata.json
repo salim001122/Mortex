@@ -1,0 +1,6 @@
+{
+  "name": "FutureGrotex",
+  "description": "GDS Investment Foundation & QASX Exchange model featuring five-stage quantitative trading, locks, and agent programs.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

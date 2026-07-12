@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FutureGrotex Elite Ecosystem</title>
+    <script>
+      (function() {
+        try {
+          if (typeof window !== 'undefined') {
+            // 1. Safeguard against formdata-polyfill
+            if (typeof window.FormData === 'undefined') {
+              var MockFormData = function() {
+                this._data = {};
+              };
+              MockFormData.prototype.append = function(k, v) {
+                if (!this._data[k]) this._data[k] = [];
+                this._data[k].push(v);
+              };
+              MockFormData.prototype.delete = function(k) {
+                delete this._data[k];
+              };
+              MockFormData.prototype.get = function(k) {
+                return this._data[k] ? this._data[k][0] : null;
+              };
+              MockFormData.prototype.getAll = function(k) {
+                return this._data[k] || [];
+              };
+              MockFormData.prototype.has = function(k) {
+                return !!this._data[k];
+              };
+              MockFormData.prototype.set = function(k, v) {
+                this._data[k] = [v];
+              };
+              MockFormData.prototype.keys = function() {
+                var keys = Object.keys(this._data);
+                var idx = 0;
+                return {
+                  next: function() {
+                    return idx < keys.length ? { value: keys[idx++], done: false } : { value: undefined, done: true };
+                  }
+                };
+              };
+              MockFormData.prototype.values = function() {
+                var self = this;
+                var keys = Object.keys(this._data);
+                var idx = 0;
+                return {
+                  next: function() {
+                    if (idx < keys.length) {
+                      var key = keys[idx++];
+                      return { value: self._data[key][0], done: false };
+                    }
+                    return { value: undefined, done: true };
+                  }
+                };
+              };
+              MockFormData.prototype.entries = function() {
+                var self = this;
+                var keys = Object.keys(this._data);
+                var idx = 0;
+                return {
+                  next: function() {
+                    if (idx < keys.length) {
+                      var key = keys[idx++];
+                      return { value: [key, self._data[key][0]], done: false };
+                    }
+                    return { value: undefined, done: true };
+                  }
+                };
+              };
+              if (typeof Symbol !== 'undefined' && Symbol.iterator) {
+                MockFormData.prototype.keys.prototype[Symbol.iterator] = function() { return this; };
+                MockFormData.prototype.values.prototype[Symbol.iterator] = function() { return this; };
+                MockFormData.prototype.entries.prototype[Symbol.iterator] = function() { return this; };
+                MockFormData.prototype[Symbol.iterator] = function() { return this.entries(); };
+              }
+              window.FormData = MockFormData;
+            } else {
+              var proto = window.FormData.prototype;
+              if (!proto.keys) {
+                proto.keys = function() {
+                  return {
+                    next: function() { return { value: undefined, done: true }; }
+                  };
+                };
+              }
+              if (!proto.values) {
+                proto.values = function() {
+                  return {
+                    next: function() { return { value: undefined, done: true }; }
+                  };
+                };
+              }
+              if (!proto.entries) {
+                proto.entries = function() {
+                  return {
+                    next: function() { return { value: undefined, done: true }; }
+                  };
+                };
+              }
+            }
+
+            // 2. Safeguard for window.fetch assignment if it's configurable
+            var originalFetch = window.fetch;
+            if (originalFetch) {
+              var currentFetch = originalFetch;
+              var desc = Object.getOwnPropertyDescriptor(window, 'fetch');
+              if (desc && desc.configurable) {
+                Object.defineProperty(window, 'fetch', {
+                  get: function() { return currentFetch; },
+                  set: function(val) { currentFetch = val; },
+                  configurable: true,
+                  enumerable: true
+                });
+              }
+              var globalDesc = Object.getOwnPropertyDescriptor(globalThis, 'fetch');
+              if (globalDesc && globalDesc.configurable) {
+                Object.defineProperty(globalThis, 'fetch', {
+                  get: function() { return currentFetch; },
+                  set: function(val) { currentFetch = val; },
+                  configurable: true,
+                  enumerable: true
+                });
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('Early safeguard initialization failed:', e);
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
