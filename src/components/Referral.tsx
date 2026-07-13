@@ -32,7 +32,7 @@ export default function Referral({
   const [activeSubTab, setActiveSubTab] = useState<'invite' | 'agent' | 'incentives'>('invite');
 
   // Generate real dynamic invitation links
-  const referralLink = `${window.location.origin}/?ref=${user.referralCode || 'MORTEX'}`;
+  const referralLink = `${window.location.origin}/?ref=${user.referralCode || 'GTX'}`;
   
   // Real dynamic, instantly scannable QR Code using QR Server API
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&color=083344&bgcolor=ffffff&data=${encodeURIComponent(referralLink)}`;
@@ -98,7 +98,7 @@ export default function Referral({
           <ArrowLeft size={18} />
         </button>
         <div>
-          <h2 className="text-sm font-bold text-white tracking-wide uppercase">Mortex Affiliate Center</h2>
+          <h2 className="text-sm font-bold text-white tracking-wide uppercase">GTX Affiliate Center</h2>
           <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider font-mono">Incentive Levels &amp; Commissions</p>
         </div>
       </div>
@@ -159,7 +159,7 @@ export default function Referral({
 
             {/* Copy referral links */}
             <div className="space-y-2">
-              <label className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider font-mono block">Your Mortex Promotion Link</label>
+              <label className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider font-mono block">Your GTX Promotion Link</label>
               <div className="flex items-center gap-2.5 bg-zinc-950 border border-zinc-850 rounded-xl p-2 pl-3.5 shadow-inner">
                 <Link size={14} className="text-cyan-400 shrink-0" />
                 <span className="text-xs text-zinc-300 truncate font-mono select-all flex-1">
@@ -368,7 +368,7 @@ export default function Referral({
               </div>
               <div className="flex items-start gap-1.5">
                 <CheckCircle2 size={11} className="text-cyan-400 shrink-0 mt-0.5" />
-                <p>Birthday Reward: Active LV1 agents and above are eligible for a 100 USDT annual Mortex Consortium allowance.</p>
+                <p>Birthday Reward: Active LV1 agents and above are eligible for a 100 USDT annual GTX Consortium allowance.</p>
               </div>
             </div>
           </div>

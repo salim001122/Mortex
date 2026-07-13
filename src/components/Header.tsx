@@ -26,8 +26,8 @@ export default function Header({ user, onNavigate, unreadChatCount }: HeaderProp
 
         <div>
           <h1 className="text-sm font-bold tracking-tight text-white flex items-center gap-1.5 uppercase font-mono">
-            Mortex<span className="text-cyan-400">Foundation</span>
-            <span className="text-[9px] px-1 bg-cyan-500/10 text-cyan-400 rounded font-bold uppercase tracking-wider border border-cyan-500/20 font-mono">Mortex</span>
+            GTX<span className="text-cyan-400">Ecosystem</span>
+            <span className="text-[9px] px-1 bg-cyan-500/10 text-cyan-400 rounded font-bold uppercase tracking-wider border border-cyan-500/20 font-mono">GTX</span>
           </h1>
 
           <div className="flex items-center gap-1.5 mt-0.5">

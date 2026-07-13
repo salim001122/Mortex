@@ -281,7 +281,7 @@ export default function CopyTrading({
   onInstantSettleTrade
 }: CopyTradingProps) {
   const [selectedCountryName, setSelectedCountryName] = useState<string>(() => {
-    return localStorage.getItem('futuregrotex_selected_country') || 'Uzbekistan';
+    return localStorage.getItem('gtx_selected_country') || localStorage.getItem('futuregrotex_selected_country') || 'Uzbekistan';
   });
   const [scheduleSearchQuery, setScheduleSearchQuery] = useState<string>('');
   const [countdownStr, setCountdownStr] = useState<string>('');
@@ -426,6 +426,7 @@ export default function CopyTrading({
 
   const handleCountryChange = (countryName: string) => {
     setSelectedCountryName(countryName);
+    localStorage.setItem('gtx_selected_country', countryName);
     localStorage.setItem('futuregrotex_selected_country', countryName);
   };
 

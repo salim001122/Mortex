@@ -18,7 +18,7 @@ export default function Support({ onNavigate }: SupportProps) {
     {
       id: 'welcome',
       sender: 'bot',
-      message: 'Hello! 👋 Welcome to FutureGrotex Live Support. I am your help bot. How can I assist you with trading, deposits, or staking today?',
+      message: 'Hello! 👋 Welcome to GTX Live Support. I am your help bot. How can I assist you with trading, deposits, or staking today?',
       timestamp: new Date().toISOString()
     }
   ]);

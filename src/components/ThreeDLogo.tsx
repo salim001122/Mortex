@@ -13,14 +13,14 @@ export default function ThreeDLogo({ size = 'md' }: ThreeDLogoProps) {
 
   return (
     <div className="flex items-center justify-center select-none">
-      {/* Sleek, professional Mortex Investment Foundation tag as the logo */}
+      {/* Sleek, professional GTX Ecosystem tag as the logo */}
       <motion.div
         className={`font-mono font-black rounded-lg border border-cyan-800/40 bg-zinc-900 text-zinc-100 flex items-center gap-1.5 shadow-md ${sizeClasses[size]}`}
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.98 }}
       >
-        <span className="text-cyan-400 font-bold">Mortex</span>
-        <span className="tracking-tight">Investment<span className="text-cyan-400"> Foundation</span></span>
+        <span className="text-cyan-400 font-bold">GTX</span>
+        <span className="tracking-tight">Ecosystem<span className="text-cyan-400"> Global</span></span>
         <span
           className="w-1.5 h-3.5 bg-cyan-400 inline-block align-middle animate-pulse"
         />

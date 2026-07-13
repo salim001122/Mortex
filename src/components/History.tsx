@@ -254,7 +254,7 @@ export default function History({
           {/* Secure Guarantee Tag */}
           <div className="flex items-center justify-center gap-1.5 text-zinc-500 text-[9px] font-bold tracking-wider uppercase font-mono text-center">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" style={{ animationDuration: '3s' }} />
-            Mortex Securitized Blockchain Ledger Receipt
+            GTX Securitized Blockchain Ledger Receipt
           </div>
         </div>
 

@@ -49,6 +49,44 @@ import Profile from './components/Profile';
 import History from './components/History';
 import Support from './components/Support';
 
+// Seamlessly intercept localStorage to migrate from 'futuregrotex_' prefix to 'gtx_' prefix
+const originalGetItem = Storage.prototype.getItem;
+const originalSetItem = Storage.prototype.setItem;
+const originalRemoveItem = Storage.prototype.removeItem;
+
+Storage.prototype.getItem = function (key: string) {
+  if (key && key.includes('futuregrotex_')) {
+    const newKey = key.replace('futuregrotex_', 'gtx_');
+    const val = originalGetItem.call(this, newKey);
+    if (val !== null) return val;
+    const oldVal = originalGetItem.call(this, key);
+    if (oldVal !== null) {
+      originalSetItem.call(this, newKey, oldVal);
+    }
+    return oldVal;
+  }
+  return originalGetItem.call(this, key);
+};
+
+Storage.prototype.setItem = function (key: string, value: string) {
+  if (key && key.includes('futuregrotex_')) {
+    const newKey = key.replace('futuregrotex_', 'gtx_');
+    originalSetItem.call(this, newKey, value);
+  } else {
+    originalSetItem.call(this, key, value);
+  }
+};
+
+Storage.prototype.removeItem = function (key: string) {
+  if (key && key.includes('futuregrotex_')) {
+    const newKey = key.replace('futuregrotex_', 'gtx_');
+    originalRemoveItem.call(this, newKey);
+    originalRemoveItem.call(this, key);
+  } else {
+    originalRemoveItem.call(this, key);
+  }
+};
+
 // Seed Initial Elite Traders
 const INITIAL_TRADERS: Trader[] = [
   { id: '1', name: 'Kieranmoris_Trades', winRate: 98.2, roi30d: 156, followers: 2400, color: 'cyan', avatarLetter: 'K', riskScore: 'Low', weeklyProfit: 45680, minAmount: 100 },
@@ -61,7 +99,7 @@ const INITIAL_TRADERS: Trader[] = [
 
 // Initial Chat Messages to seed the community
 const SEED_CHAT_MESSAGES: ChatMessage[] = [
-  { id: 'c1', userId: 'm1', username: 'CryptoKing', userEmail: 'king@crypto.com', message: 'FutureGrotex is paying out insane staking yields today. Already collected 3.6%!', timestamp: new Date(Date.now() - 3600000).toISOString() },
+  { id: 'c1', userId: 'm1', username: 'CryptoKing', userEmail: 'king@crypto.com', message: 'GTX is paying out insane staking yields today. Already collected 3.6%!', timestamp: new Date(Date.now() - 3600000).toISOString() },
   { id: 'c2', userId: 'm2', username: 'WhaleWatcher', userEmail: 'whale@watch.com', message: 'Just mirrored Kieranmoris copy trade with 500 USDT, locked and ready 🚀', timestamp: new Date(Date.now() - 1800000).toISOString() },
   { id: 'c3', userId: 'm3', username: 'TradeWizard', userEmail: 'wizard@trade.com', message: 'Does anyone know the withdrawal limit? Try to withdraw 120 USDT.', timestamp: new Date(Date.now() - 600000).toISOString() },
   { id: 'c4', userId: 'm4', username: 'Satoshi', userEmail: 'sat@btc.com', message: 'wizard@trade.com min is 4 USDT. Works instantly! Verified my KYC yesterday as well.', timestamp: new Date(Date.now() - 300000).toISOString() }
@@ -327,7 +365,7 @@ export default function App() {
         'Bitcoin is holding solid above 90k, copy trades are highly accurate today!',
         'Just claimed daily bonus streak multipliers. Streak 5 lets go 🔥',
         'Staked another 500 USDT into the AI quantitative pool. Free yields!',
-        'Withdrawal of 45 USDT completed in 3 seconds. Grotex does not play!',
+        'Withdrawal of 45 USDT completed in 3 seconds. GTX does not play!',
         'Invite links are yielding massive commissions. Level 1 referral unlocked me 25 USDT reward.',
         'Anyone mirroring Satoshi_AI master profile? Win rate is crazy!'
       ];
@@ -339,7 +377,7 @@ export default function App() {
         id: 'c-' + Date.now(),
         userId: 'm-' + Math.random().toString(36).substring(2, 5),
         username: rTrader,
-        userEmail: `${rTrader.toLowerCase().replace(' ', '')}@futuregrotex.com`,
+        userEmail: `${rTrader.toLowerCase().replace(' ', '')}@gtx.com`,
         message: rTalk,
         timestamp: new Date().toISOString()
       };
@@ -644,7 +682,7 @@ export default function App() {
     try {
       // Create OTP instance
       const totp = new OTPAuth.TOTP({
-        issuer: 'Mortex',
+        issuer: 'GTX',
         label: currentUser.email,
         algorithm: 'SHA1',
         digits: 6,
@@ -1011,14 +1049,14 @@ export default function App() {
               </button>
               <div className="flex items-center gap-3.5">
                 <button 
-                  onClick={() => showToast("Mortex Global English support node selected.", "info")}
+                  onClick={() => showToast("GTX Global English support node selected.", "info")}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-zinc-900/50 border border-zinc-850/60 text-[10px] font-bold text-zinc-300 hover:text-white transition"
                 >
                   <Globe size={12} className="text-cyan-400" />
                   <span>EN</span>
                 </button>
                 <button 
-                  onClick={() => showToast("Connecting to live Mortex Support Node...", "info")}
+                  onClick={() => showToast("Connecting to live GTX Support Node...", "info")}
                   className="w-9 h-9 rounded-full bg-zinc-900 border border-zinc-850 flex items-center justify-center text-zinc-300 hover:text-white hover:border-cyan-500/40 transition"
                 >
                   <Headphones size={15} />
@@ -1032,7 +1070,7 @@ export default function App() {
                 <ThreeDLogo size="md" />
                 <div className="space-y-1">
                   <h1 className="text-2xl font-black text-white tracking-tight uppercase font-mono">
-                    {isLoginMode ? "Welcome to Mortex" : "Create Mortex Account"}
+                    {isLoginMode ? "Welcome to GTX" : "Create GTX Account"}
                   </h1>
                   <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">
                     {isLoginMode ? "Secure Copy Trading & Staking Syndicate" : "Claim your 10 USDT Welcome Gift Now"}
