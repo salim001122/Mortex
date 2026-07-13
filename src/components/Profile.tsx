@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User } from '../types';
+import * as OTPAuth from 'otpauth';
 
 interface ProfileProps {
   user: User;
@@ -34,7 +35,19 @@ interface ProfileProps {
   onLogout: () => void;
   onShowSupport: () => void;
   onShowToast: (msg: string, type: 'success' | 'error' | 'warning' | 'info') => void;
+  onUpdateAvatar?: (avatarUrl: string) => void;
 }
+
+const BEAUTIFUL_AVATARS = [
+  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop&crop=face',
+  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face',
+  'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&h=150&fit=crop&crop=face',
+  'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&h=150&fit=crop&crop=face',
+  'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&h=150&fit=crop&crop=face',
+  'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&h=150&fit=crop&crop=face',
+  'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&h=150&fit=crop&crop=face',
+  'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=150&h=150&fit=crop&crop=face'
+];
 
 export default function Profile({
   user,
@@ -44,7 +57,8 @@ export default function Profile({
   onUpdatePassword,
   onLogout,
   onShowSupport,
-  onShowToast
+  onShowToast,
+  onUpdateAvatar
 }: ProfileProps) {
   const [kycModalOpen, setKycModalOpen] = useState(false);
   const [twoFactorModalOpen, setTwoFactorModalOpen] = useState(false);
@@ -80,7 +94,7 @@ export default function Profile({
   };
 
   const avatarSeed = user.email || 'default';
-  const avatarUrl = `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(avatarSeed)}`;
+  const avatarUrl = user.avatarUrl || `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(avatarSeed)}`;
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -124,8 +138,36 @@ export default function Profile({
       onShowToast('Verification code must be exactly 6 digits.', 'error');
       return;
     }
-    onUpdate2FA(tempSecret);
-    setTwoFactorModalOpen(false);
+
+    try {
+      // Create TOTP instance
+      const totp = new OTPAuth.TOTP({
+        issuer: 'Mortex',
+        label: user.email,
+        algorithm: 'SHA1',
+        digits: 6,
+        period: 30,
+        secret: tempSecret
+      });
+
+      // Validate token
+      const delta = totp.validate({
+        token: otpCodeInput,
+        window: 2 // allow clock drift
+      });
+
+      if (delta === null) {
+        onShowToast('Invalid authenticator code! Please try again.', 'error');
+        return;
+      }
+
+      onUpdate2FA(tempSecret);
+      setTwoFactorModalOpen(false);
+      onShowToast('Two-Factor Authentication (2FA) successfully activated!', 'success');
+    } catch (err) {
+      console.error(err);
+      onShowToast('An error occurred during 2FA synchronization.', 'error');
+    }
   };
 
   const handlePasswordSubmit = () => {
@@ -173,19 +215,16 @@ export default function Profile({
       exit={{ opacity: 0, y: -10 }}
       className="space-y-5 px-4 pb-12 font-sans"
     >
-      {/* Sleek Minimal Header */}
-      <div className="flex items-center gap-3.5 bg-zinc-900/40 p-4 rounded-2xl border border-zinc-850/50 shadow-sm">
+      {/* Super Minimal Back Navigation */}
+      <div className="flex items-center">
         <button 
           id="back-to-dashboard-btn"
           onClick={() => onNavigate('dashboard')} 
-          className="text-zinc-400 hover:text-white transition p-2 hover:bg-zinc-800 rounded-xl border border-zinc-800/40 bg-zinc-950/60"
+          className="text-zinc-400 hover:text-white transition py-1.5 px-3 hover:bg-zinc-900 rounded-xl border border-zinc-850/60 bg-zinc-950 flex items-center gap-2 text-xs font-bold font-mono uppercase tracking-wider"
         >
-          <ArrowLeft size={16} />
+          <ArrowLeft size={14} className="text-cyan-400" />
+          <span>Back</span>
         </button>
-        <div>
-          <h2 className="text-sm font-extrabold text-white tracking-wide uppercase font-mono">My Account</h2>
-          <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider font-mono">Security & Profile Console</p>
-        </div>
       </div>
 
       {/* Simplified, High-End Profile Card */}
@@ -219,19 +258,39 @@ export default function Profile({
         </div>
       </div>
 
-      {/* Modern Funds Summary Board */}
-      <div className="bg-zinc-900/30 border border-zinc-850/80 rounded-2xl p-5 shadow-md flex items-center justify-between">
-        <div className="space-y-1">
-          <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider font-mono block">Accumulated Balance</span>
-          <span className="text-base font-black text-white block tracking-tight">
-            ${(user.mainBalance + user.profitBalance + user.totalStaked).toLocaleString(undefined, { minimumFractionDigits: 2 })} <span className="text-[10px] text-zinc-400 font-mono font-bold">USDT</span>
+
+
+      {/* Premium Funds Card */}
+      <div className="bg-gradient-to-br from-zinc-900 via-zinc-950 to-zinc-900 border border-zinc-800 rounded-2xl p-5 shadow-2xl relative overflow-hidden">
+        {/* Decorative background light orb */}
+        <div className="absolute -top-12 -right-12 w-24 h-24 bg-cyan-500/10 rounded-full blur-xl pointer-events-none" />
+        
+        <div className="flex items-start justify-between">
+          <div className="space-y-1">
+            <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider font-mono flex items-center gap-1.5">
+              <Wallet size={12} className="text-cyan-400" />
+              Accumulated Net Worth
+            </span>
+            <span className="text-2xl font-black text-white tracking-tight font-mono block mt-1">
+              ${(user.mainBalance + user.profitBalance + user.totalStaked).toLocaleString(undefined, { minimumFractionDigits: 2 })} <span className="text-xs text-cyan-400 font-bold uppercase">USDT</span>
+            </span>
+          </div>
+
+          <span className={`text-[8px] font-black px-2 py-1 rounded-md border uppercase tracking-wider font-mono ${user.twoFactorEnabled ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25' : 'bg-amber-500/10 text-amber-400 border-amber-500/25'}`}>
+            {user.twoFactorEnabled ? '2FA SECURED' : 'UNSECURED'}
           </span>
         </div>
-        <div className="text-right">
-          <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider font-mono block mb-1">Protection Level</span>
-          <span className={`text-[9px] font-bold px-2 py-1 rounded-lg border uppercase tracking-wider font-mono ${user.twoFactorEnabled ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25' : 'bg-amber-500/10 text-amber-400 border-amber-500/25'}`}>
-            {user.twoFactorEnabled ? 'High (2FA)' : 'Standard'}
-          </span>
+
+        {/* Detailed asset breakdown */}
+        <div className="grid grid-cols-2 gap-3 mt-4 pt-3.5 border-t border-zinc-800/60 text-[10px] font-mono">
+          <div className="bg-zinc-950/40 p-2.5 rounded-xl border border-zinc-850/60">
+            <span className="text-zinc-500 block font-bold uppercase text-[8px] tracking-wider">Available Principal</span>
+            <span className="text-white font-bold block mt-1 text-xs">${user.mainBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} USDT</span>
+          </div>
+          <div className="bg-zinc-950/40 p-2.5 rounded-xl border border-zinc-850/60">
+            <span className="text-zinc-500 block font-bold uppercase text-[8px] tracking-wider">Yield Earnings</span>
+            <span className="text-emerald-400 font-bold block mt-1 text-xs">+${user.profitBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} USDT</span>
+          </div>
         </div>
       </div>
 

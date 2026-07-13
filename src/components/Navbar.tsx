@@ -12,7 +12,6 @@ export default function Navbar({ currentScreen, onNavigate }: NavbarProps) {
     { id: 'dashboard', label: 'Home', icon: Home },
     { id: 'market', label: 'Market', icon: LineChart },
     { id: 'copyTrade', label: 'Copy', icon: Copy },
-    { id: 'stake', label: 'Stake', icon: Coins },
     { id: 'refer', label: 'Refer', icon: Users },
     { id: 'more', label: 'Profile', icon: User }
   ];

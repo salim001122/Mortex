@@ -36,13 +36,14 @@ import {
   TransactionStatus 
 } from './types';
 
+import * as OTPAuth from 'otpauth';
+
 import ThreeDLogo from './components/ThreeDLogo';
 import TradingViewWidget from './components/TradingViewWidget';
 import Navbar from './components/Navbar';
 import Header from './components/Header';
 import Dashboard from './components/Dashboard';
 import CopyTrading from './components/CopyTrading';
-import Staking from './components/Staking';
 import Referral from './components/Referral';
 import Profile from './components/Profile';
 import History from './components/History';
@@ -131,6 +132,26 @@ export default function App() {
     const currentSession = localStorage.getItem('futuregrotex_current_user');
     if (currentSession) {
       const userObj = JSON.parse(currentSession) as User;
+      if (!userObj.avatarUrl) {
+        const portraits = [
+          'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop&crop=face',
+          'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face',
+          'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&h=150&fit=crop&crop=face',
+          'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&h=150&fit=crop&crop=face',
+          'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&h=150&fit=crop&crop=face',
+          'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&h=150&fit=crop&crop=face',
+          'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&h=150&fit=crop&crop=face',
+          'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=150&h=150&fit=crop&crop=face',
+          'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150&h=150&fit=crop&crop=face',
+          'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&h=150&fit=crop&crop=face',
+          'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop&crop=face',
+          'https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?w=150&h=150&fit=crop&crop=face'
+        ];
+        const seed = userObj.email || userObj.username || userObj.uid || '';
+        let sum = 0;
+        for (let i = 0; i < seed.length; i++) sum += seed.charCodeAt(i);
+        userObj.avatarUrl = portraits[sum % portraits.length];
+      }
       setCurrentUser(userObj);
       loadUserRelatedData(userObj.uid);
     }
@@ -181,21 +202,32 @@ export default function App() {
             const profit = tx.amount * 0.0219;
             const totalReturn = tx.amount + profit;
 
-            const currentSession = localStorage.getItem('futuregrotex_current_user');
-            if (currentSession) {
-              const u = JSON.parse(currentSession) as User;
-              u.mainBalance += totalReturn;
-              u.profitBalance += profit;
-              syncUser(u);
-            }
+            if (tx.requiresApproval) {
+              // 2nd daily trade gets placed on hold
+              showToast(`VIP Daily Limit Trade finished! Placed on Security HOLD for Audit.`, 'warning');
+              return {
+                ...tx,
+                status: TransactionStatus.Hold,
+                profit,
+                totalReturn
+              };
+            } else {
+              const currentSession = localStorage.getItem('futuregrotex_current_user');
+              if (currentSession) {
+                const u = JSON.parse(currentSession) as User;
+                u.mainBalance += totalReturn;
+                u.profitBalance += profit;
+                syncUser(u);
+              }
 
-            showToast(`Copy trade with ${tx.traderName} complete! +$${profit.toFixed(2)} USDT profits added.`, 'success');
-            return {
-              ...tx,
-              status: TransactionStatus.Success,
-              profit,
-              totalReturn
-            };
+              showToast(`Copy trade with ${tx.traderName} complete! +$${profit.toFixed(2)} USDT profits added.`, 'success');
+              return {
+                ...tx,
+                status: TransactionStatus.Success,
+                profit,
+                totalReturn
+              };
+            }
           }
         }
         return tx;
@@ -365,6 +397,25 @@ export default function App() {
 
     const refCodeGenerated = 'FG' + Math.random().toString(36).substring(2, 8).toUpperCase();
 
+    const portraits = [
+      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop&crop=face',
+      'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face',
+      'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&h=150&fit=crop&crop=face',
+      'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&h=150&fit=crop&crop=face',
+      'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&h=150&fit=crop&crop=face',
+      'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&h=150&fit=crop&crop=face',
+      'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&h=150&fit=crop&crop=face',
+      'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=150&h=150&fit=crop&crop=face',
+      'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150&h=150&fit=crop&crop=face',
+      'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&h=150&fit=crop&crop=face',
+      'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop&crop=face',
+      'https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?w=150&h=150&fit=crop&crop=face'
+    ];
+    const seed = authEmail || authUsername || 'UID-' + Math.random();
+    let sum = 0;
+    for (let i = 0; i < seed.length; i++) sum += seed.charCodeAt(i);
+    const assignedAvatar = portraits[sum % portraits.length];
+
     const newUser: User = {
       uid: 'UID-' + Math.random().toString(36).substring(2, 9).toUpperCase(),
       username: authUsername,
@@ -388,7 +439,8 @@ export default function App() {
       kycStatus: 'not_submitted',
       copyTradeCount: 0,
       copyTradeResetTime: null,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      avatarUrl: assignedAvatar
     };
 
     usersList.push(newUser);
@@ -472,18 +524,36 @@ export default function App() {
   };
 
   // Copy trade deployment
-  const handleStartCopyTrade = (traderName: string, amount: number) => {
+  const handleStartCopyTrade = (traderName: string, amount: number, traderAvatar?: string, tradePair?: string) => {
     if (!currentUser) return;
 
-    if (currentUser.copyTradeCount >= 2) {
-      showToast('Maximum 2 copy trades allowed in 24 hours.', 'warning');
+    // Real active copy trades in the last 24 hours
+    const txListStr = localStorage.getItem('futuregrotex_transactions') || '[]';
+    const txListAll = JSON.parse(txListStr) as Transaction[];
+    const userCopyTradesLast24h = txListAll.filter(t => 
+      t.userId === currentUser.uid && 
+      t.type === TransactionType.CopyTrade && 
+      (Date.now() - new Date(t.timestamp).getTime()) < 24 * 60 * 60 * 1000
+    );
+
+    if (userCopyTradesLast24h.length >= 2) {
+      const sorted = [...userCopyTradesLast24h].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      const firstTxTime = new Date(sorted[0].timestamp).getTime();
+      const nextAvailableTime = new Date(firstTxTime + 24 * 60 * 60 * 1000);
+      const remainingMs = nextAvailableTime.getTime() - Date.now();
+      const remainingHours = Math.floor(remainingMs / (60 * 60 * 1000));
+      const remainingMins = Math.ceil((remainingMs % (60 * 60 * 1000)) / (60 * 1000));
+      
+      showToast(`Daily limit reached! Next trade slot opens in ${remainingHours}h ${remainingMins}m.`, 'warning');
       return;
     }
+
+    const isSecondTrade = userCopyTradesLast24h.length === 1;
 
     const u = { ...currentUser };
     u.mainBalance -= amount;
     u.totalVolume += amount;
-    u.copyTradeCount += 1;
+    u.copyTradeCount = userCopyTradesLast24h.length + 1;
     
     if (u.totalVolume >= 20000) {
       u.tier = VIPRank.Platinum;
@@ -495,7 +565,7 @@ export default function App() {
 
     syncUser(u);
 
-    const endTime = new Date(Date.now() + 30 * 1000).toISOString(); // 30 seconds demo!
+    const endTime = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 minutes!
     const copyTradeTx: Transaction = {
       id: 'FG-CT-' + Math.random().toString(36).substring(2, 9).toUpperCase(),
       userId: currentUser.uid,
@@ -504,15 +574,130 @@ export default function App() {
       status: TransactionStatus.Pending,
       timestamp: new Date().toISOString(),
       traderName,
-      endTime
+      endTime,
+      requiresApproval: isSecondTrade,
+      traderAvatar,
+      tradePair
     };
 
-    const txList = JSON.parse(localStorage.getItem('futuregrotex_transactions') || '[]') as Transaction[];
-    txList.push(copyTradeTx);
-    localStorage.setItem('futuregrotex_transactions', JSON.stringify(txList));
-    setTransactions(txList.filter(t => t.userId === currentUser.uid));
+    txListAll.push(copyTradeTx);
+    localStorage.setItem('futuregrotex_transactions', JSON.stringify(txListAll));
+    setTransactions(txListAll.filter(t => t.userId === currentUser.uid));
 
-    showToast(`Copy Trade with ${traderName} started! Ends in 30 seconds.`, 'info');
+    if (isSecondTrade) {
+      showToast(`VIP 2nd Trade deployed! Placed on Security Hold upon 30m completion.`, 'info');
+    } else {
+      showToast(`Copy Trade with ${traderName} started! Ends in 30 minutes.`, 'info');
+    }
+  };
+
+  // Instant settle for testability and demonstration
+  const handleInstantSettleTrade = (txId: string) => {
+    if (!currentUser) return;
+    const txsStr = localStorage.getItem('futuregrotex_transactions') || '[]';
+    const allTxs = JSON.parse(txsStr) as Transaction[];
+    const txIndex = allTxs.findIndex(t => t.id === txId && t.status === TransactionStatus.Pending);
+    
+    if (txIndex === -1) return;
+    
+    const tx = allTxs[txIndex];
+    const profit = tx.amount * 0.0219;
+    const totalReturn = tx.amount + profit;
+    const isSecondTrade = tx.requiresApproval;
+    
+    const u = { ...currentUser };
+    if (isSecondTrade) {
+      allTxs[txIndex] = {
+        ...tx,
+        status: TransactionStatus.Hold,
+        profit,
+        totalReturn
+      };
+      showToast(`VIP Security check triggered on trade ${tx.id}. Funds placed in Escrow.`, 'warning');
+    } else {
+      u.mainBalance += totalReturn;
+      u.profitBalance += profit;
+      syncUser(u);
+      
+      allTxs[txIndex] = {
+        ...tx,
+        status: TransactionStatus.Success,
+        profit,
+        totalReturn
+      };
+      showToast(`Copy trade complete! +$${profit.toFixed(2)} USDT profits added.`, 'success');
+    }
+    
+    localStorage.setItem('futuregrotex_transactions', JSON.stringify(allTxs));
+    setTransactions(allTxs.filter(t => t.userId === u.uid));
+  };
+
+  // Release hold transaction using real 2FA verification
+  const handleReleaseTrade = (txId: string, totpCode: string): boolean => {
+    if (!currentUser) return false;
+
+    if (!currentUser.twoFactorEnabled || !currentUser.twoFactorSecret) {
+      showToast('Please enable 2FA in your Security profile first!', 'warning');
+      return false;
+    }
+
+    try {
+      // Create OTP instance
+      const totp = new OTPAuth.TOTP({
+        issuer: 'Mortex',
+        label: currentUser.email,
+        algorithm: 'SHA1',
+        digits: 6,
+        period: 30,
+        secret: currentUser.twoFactorSecret
+      });
+
+      // Validate code
+      const delta = totp.validate({
+        token: totpCode,
+        window: 2 // allow clock drift
+      });
+
+      if (delta === null) {
+        showToast('Invalid 2FA Authenticator code!', 'error');
+        return false;
+      }
+
+      const txsStr = localStorage.getItem('futuregrotex_transactions') || '[]';
+      const allTxs = JSON.parse(txsStr) as Transaction[];
+      const txIndex = allTxs.findIndex(t => t.id === txId && t.status === TransactionStatus.Hold);
+
+      if (txIndex === -1) {
+        showToast('Held trade not found or already settled.', 'error');
+        return false;
+      }
+
+      const tx = allTxs[txIndex];
+      const profit = tx.profit || (tx.amount * 0.0219);
+      const totalReturn = tx.totalReturn || (tx.amount + profit);
+
+      const u = { ...currentUser };
+      u.mainBalance += totalReturn;
+      u.profitBalance += profit;
+      syncUser(u);
+
+      allTxs[txIndex] = {
+        ...tx,
+        status: TransactionStatus.Success,
+        profit,
+        totalReturn
+      };
+
+      localStorage.setItem('futuregrotex_transactions', JSON.stringify(allTxs));
+      setTransactions(allTxs.filter(t => t.userId === currentUser.uid));
+
+      showToast(`2FA Verified! +$${profit.toFixed(2)} USDT released to your main balance!`, 'success');
+      return true;
+    } catch (err) {
+      console.error(err);
+      showToast('Error verifying security authenticator.', 'error');
+      return false;
+    }
   };
 
   // Staking
@@ -574,6 +759,14 @@ export default function App() {
     };
     syncUser(u);
     showToast('Identity verification submitted. Documents are under review.', 'info');
+  };
+
+  // Avatar update
+  const handleUpdateAvatar = (avatarUrl: string) => {
+    if (!currentUser) return;
+    const u = { ...currentUser, avatarUrl };
+    syncUser(u);
+    showToast('Profile avatar updated successfully!', 'success');
   };
 
   // 2FA
@@ -1062,8 +1255,9 @@ export default function App() {
                         setWithdrawOpen(true);
                       }}
                       onClaimBonus={handleClaimDailyBonus}
-                      activeTrades={transactions.filter(t => t.status === TransactionStatus.Pending)}
+                      activeTrades={transactions.filter(t => t.status === TransactionStatus.Pending || t.status === TransactionStatus.Hold)}
                       activeStakeAmount={activeStake ? activeStake.amount : 0}
+                      onReleaseTrade={handleReleaseTrade}
                     />
                   </div>
                 )}
@@ -1089,19 +1283,10 @@ export default function App() {
                       user={currentUser}
                       onNavigate={(screen) => setCurrentScreen(screen)}
                       traders={INITIAL_TRADERS}
-                      activeTrades={transactions.filter(t => t.status === TransactionStatus.Pending)}
+                      activeTrades={transactions.filter(t => t.status === TransactionStatus.Pending || t.status === TransactionStatus.Hold)}
                       onStartCopyTrade={handleStartCopyTrade}
-                    />
-                  </div>
-                )}
-
-                {currentScreen === 'stake' && (
-                  <div key="stake">
-                    <Staking
-                      user={currentUser}
-                      onNavigate={(screen) => setCurrentScreen(screen)}
-                      activeStake={activeStake}
-                      onStartStaking={handleStartStaking}
+                      onReleaseTrade={handleReleaseTrade}
+                      onInstantSettleTrade={handleInstantSettleTrade}
                     />
                   </div>
                 )}
@@ -1127,6 +1312,7 @@ export default function App() {
                       onLogout={handleLogout}
                       onShowSupport={() => setCurrentScreen('support')}
                       onShowToast={showToast}
+                      onUpdateAvatar={handleUpdateAvatar}
                     />
                   </div>
                 )}
@@ -1193,73 +1379,7 @@ export default function App() {
                   </motion.div>
                 )}
 
-                {currentScreen === 'community' && (
-                  <motion.div
-                    key="community"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    className="space-y-4 px-4 pb-12 flex flex-col h-[calc(100vh-140px)]"
-                  >
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button 
-                        onClick={() => setCurrentScreen('dashboard')} 
-                        className="text-zinc-400 hover:text-white transition p-1 hover:bg-zinc-850 rounded"
-                      >
-                        <ArrowLeft size={18} />
-                      </button>
-                      <div>
-                        <h2 className="text-sm font-bold text-white tracking-tight uppercase font-mono">Global Chat</h2>
-                        <p className="text-[10px] text-cyan-400 font-bold uppercase font-mono">15,326 members online</p>
-                      </div>
-                    </div>
 
-                    {/* Chat Messages */}
-                    <div className="flex-1 overflow-y-auto bg-zinc-950 border border-zinc-900 rounded-xl p-4 space-y-4">
-                      {chatMessages.map(msg => {
-                        const isSelf = msg.userId === currentUser.uid;
-                        return (
-                          <div key={msg.id} className={`flex ${isSelf ? 'justify-end' : 'justify-start'}`}>
-                            <div className={`max-w-[85%] rounded-xl px-3.5 py-2.5 border ${
-                              isSelf 
-                                ? 'bg-cyan-950 border-cyan-800/40 text-zinc-100 rounded-tr-none' 
-                                : 'bg-zinc-900 border-zinc-850 text-zinc-300 rounded-tl-none'
-                            }`}>
-                              <p className="text-[9px] font-bold uppercase text-cyan-400 mb-1 font-mono">
-                                {isSelf ? 'You' : msg.username}
-                              </p>
-                              <p className="text-xs leading-relaxed">
-                                {msg.message}
-                              </p>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {/* Message input */}
-                    <div className="flex gap-2 bg-zinc-900 p-1.5 rounded-xl border border-zinc-800 shadow-sm shrink-0 font-mono">
-                      <input 
-                        type="text" 
-                        value={newChatMessage}
-                        onChange={(e) => {
-                          setNewChatMessage(e.target.value);
-                          setUnreadChatCount(0);
-                        }}
-                        onKeyDown={(e) => e.key === 'Enter' && handleSendChatMessage()}
-                        placeholder="Type a message..."
-                        className="flex-1 bg-transparent text-white placeholder-zinc-550 outline-none border-none text-xs px-3 py-2 font-mono"
-                      />
-                      
-                      <button
-                        onClick={handleSendChatMessage}
-                        className="bg-cyan-500 hover:bg-cyan-400 px-4 rounded text-zinc-950 text-xs font-bold transition font-mono uppercase"
-                      >
-                        Send
-                      </button>
-                    </div>
-                  </motion.div>
-                )}
               </AnimatePresence>
             </main>
 

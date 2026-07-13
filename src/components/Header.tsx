@@ -8,8 +8,7 @@ interface HeaderProps {
 }
 
 export default function Header({ user, onNavigate, unreadChatCount }: HeaderProps) {
-  const avatarSeed = user?.email || 'default';
-  const avatarUrl = `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(avatarSeed)}`;
+  const avatarUrl = user?.avatarUrl || `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(user?.email || 'default')}`;
 
   return (
     <header className="sticky top-0 z-30 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-900 px-4 py-3 flex justify-between items-center max-w-md mx-auto">
@@ -52,19 +51,6 @@ export default function Header({ user, onNavigate, unreadChatCount }: HeaderProp
 
       {/* Navigation Shortcuts */}
       <div className="flex items-center gap-2">
-        {/* Live Chat Community icon shortcut */}
-        <button
-          onClick={() => onNavigate('community')}
-          className="relative w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center hover:bg-zinc-800 hover:border-zinc-700 active:scale-95 transition"
-        >
-          <MessageSquare size={14} className="text-zinc-300" />
-          {unreadChatCount > 0 && (
-            <span className="absolute -top-1 -right-1 bg-red-500 text-[8px] text-white w-4.5 h-4.5 rounded-full flex items-center justify-center font-bold border border-zinc-950">
-              {unreadChatCount}
-            </span>
-          )}
-        </button>
-
         {/* Profile picture button shortcut */}
         <button
           onClick={() => onNavigate('more')}

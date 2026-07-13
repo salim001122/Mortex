@@ -17,7 +17,8 @@ export enum TransactionType {
 export enum TransactionStatus {
   Pending = 'Pending',
   Success = 'Success',
-  Failed = 'Failed'
+  Failed = 'Failed',
+  Hold = 'Hold'
 }
 
 export interface User {
@@ -51,6 +52,7 @@ export interface User {
   copyTradeCount: number;
   copyTradeResetTime: string | null; // ISO string
   createdAt: string;
+  avatarUrl?: string; // High quality custom profile pic
 }
 
 export interface Transaction {
@@ -68,6 +70,8 @@ export interface Transaction {
   bonus?: number;
   endTime?: string; // For running Copy Trades
   requiresApproval?: boolean;
+  tradePair?: string; // Selected random trading pair
+  traderAvatar?: string; // Copier custom photo
 }
 
 export interface Trader {
