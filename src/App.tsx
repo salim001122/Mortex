@@ -1569,14 +1569,10 @@ export default function App() {
               {/* Rotating glowing metallic token/logo */}
               <motion.div
                 animate={{ rotateY: 360 }}
-                transition={{ duration: 2.2, repeat: Infinity, ease: "linear" }}
-                className="w-24 h-24 rounded-full bg-gradient-to-tr from-cyan-400 via-[#00bfa5] to-zinc-900 border-4 border-cyan-400/80 flex items-center justify-center shadow-[0_0_40px_rgba(6,182,212,0.35)] relative overflow-hidden"
+                transition={{ duration: 3.5, repeat: Infinity, ease: "linear" }}
+                className="relative flex items-center justify-center p-2 rounded-full"
               >
-                <div className="absolute inset-0.5 rounded-full bg-zinc-950 flex items-center justify-center">
-                  <span className="text-3xl font-black tracking-widest text-cyan-400 font-mono italic pl-1">NGK</span>
-                </div>
-                {/* Visual shine ring */}
-                <div className="absolute top-0 left-0 right-0 h-1/2 bg-white/5 skew-y-12" />
+                <ThreeDLogo size="lg" showText={false} />
               </motion.div>
 
               <div className="space-y-1.5">

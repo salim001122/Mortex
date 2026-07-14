@@ -1,5 +1,6 @@
 import { Flame, MessageSquare, Zap } from 'lucide-react';
 import { User } from '../types';
+import ThreeDLogo from './ThreeDLogo';
 
 interface HeaderProps {
   user: User | null;
@@ -18,16 +19,16 @@ export default function Header({ user, onNavigate, unreadChatCount }: HeaderProp
           onClick={() => onNavigate('dashboard')} 
           className="relative group active:scale-95 transition"
         >
-          <div className="w-8 h-8 bg-zinc-850 border border-zinc-700 rounded-lg flex items-center justify-center">
-            <Zap size={16} className="text-cyan-400" />
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden">
+            <ThreeDLogo size="sm" showText={false} />
           </div>
           <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-emerald-500 rounded-full border border-zinc-950 shadow-md"></div>
         </button>
 
         <div>
           <h1 className="text-sm font-bold tracking-tight text-white flex items-center gap-1.5 uppercase font-mono">
-            NGK<span className="text-cyan-400">Ecosystem</span>
-            <span className="text-[9px] px-1 bg-cyan-500/10 text-cyan-400 rounded font-bold uppercase tracking-wider border border-cyan-500/20 font-mono">NGK</span>
+            NGK<span className="text-emerald-400">Ecosystem</span>
+            <span className="text-[9px] px-1 bg-emerald-500/10 text-emerald-400 rounded font-bold uppercase tracking-wider border border-emerald-500/20 font-mono">NGK</span>
           </h1>
 
           <div className="flex items-center gap-1.5 mt-0.5">
