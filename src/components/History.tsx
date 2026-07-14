@@ -360,78 +360,49 @@ export default function History({
               amtColor = 'text-amber-400';
             }
 
-            const formattedDate = new Date(tx.timestamp).toLocaleString(undefined, {
-              month: 'short',
-              day: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit'
-            });
+            const dateObj = new Date(tx.timestamp);
+            const yyyy = dateObj.getFullYear();
+            const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const dd = String(dateObj.getDate()).padStart(2, '0');
+            const hh = String(dateObj.getHours()).padStart(2, '0');
+            const min = String(dateObj.getMinutes()).padStart(2, '0');
+            const ss = String(dateObj.getSeconds()).padStart(2, '0');
+            const formattedDate = `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
+
+            const displayAmount = tx.amount % 1 === 0 ? tx.amount.toString() : tx.amount.toFixed(4);
+            const currencySuffix = tx.type === TransactionType.Withdraw ? 'USDT-TRC20' : 'USDT-TRC20';
 
             return (
               <div 
                 key={tx.id} 
                 onClick={() => setSelectedTx(tx)}
-                className="coding-card rounded-xl p-3 transition relative overflow-hidden cursor-pointer hover:bg-zinc-900/40 active:scale-[0.98] duration-200 flex items-center justify-between"
+                className="bg-[#181b22] border border-zinc-900/80 rounded-2xl p-5 transition relative overflow-hidden cursor-pointer hover:bg-[#1f222b] active:scale-[0.98] duration-200 flex items-center justify-between"
               >
-                {/* Left Side: Icon & Details */}
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 ${iconBg}`}>
-                    {icon}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <h4 className="text-[11px] font-bold text-white uppercase tracking-wider truncate">
-                        {tx.type}
-                      </h4>
-                      {tx.traderName && (
-                        <span className="text-[8px] text-cyan-400 font-mono border border-cyan-500/20 px-1 rounded uppercase shrink-0">
-                          Copy
-                        </span>
-                      )}
-                      {tx.bonus && tx.bonus > 0 && (
-                        <span className="text-[8px] text-amber-400 font-mono border border-amber-500/20 px-1 rounded uppercase shrink-0">
-                          Bonus
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-[9px] text-zinc-550 flex items-center gap-1 mt-0.5 font-mono">
-                      <Clock size={8} className="shrink-0 text-zinc-550" /> {formattedDate}
-                    </p>
-                  </div>
+                {/* Left Side: Amount & Timestamp */}
+                <div className="space-y-2">
+                  <h3 className="text-sm sm:text-base font-bold text-white tracking-wide">
+                    {displayAmount} <span className="text-zinc-300 font-medium text-xs sm:text-sm">{currencySuffix}</span>
+                  </h3>
+                  <p className="text-[10px] sm:text-[11px] text-zinc-500 font-mono tracking-normal">
+                    {formattedDate}
+                  </p>
                 </div>
 
-                {/* Right Side: Amount & Status */}
-                <div className="text-right flex flex-col items-end shrink-0 pl-2">
-                  <div className="flex items-center gap-1">
-                    <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <circle cx="12" cy="12" r="10" fill="#26A17B" />
-                      <path d="M12.2 6.5c-3.2 0-5.8 1.1-5.8 2.5s2.6 2.5 5.8 2.5 5.8-1.1 5.8-2.5-2.6-2.5-5.8-2.5zm3.2 2.7h-2.1v4.8h-2.2v-4.8H9v-1.1h6.4v1.1z" fill="white" />
-                    </svg>
-                    <span className={`text-xs font-mono font-bold ${amtColor}`}>
-                      {amtPrefix}{tx.amount.toFixed(2)}
-                    </span>
-                  </div>
-                  
-                  <div className="flex items-center gap-1 mt-0.5">
-                    {tx.status === TransactionStatus.Pending && (
-                      <span className="text-[8px] font-bold text-yellow-400 uppercase tracking-wide font-mono flex items-center gap-1">
-                        <span className="w-1 h-1 bg-yellow-400 rounded-full animate-pulse" />
-                        Pending
-                      </span>
-                    )}
-                    {tx.status === TransactionStatus.Success && (
-                      <span className="text-[8px] font-bold text-emerald-400 uppercase tracking-wide font-mono flex items-center gap-1">
-                        <span className="w-1 h-1 bg-emerald-400 rounded-full" />
-                        Success
-                      </span>
-                    )}
-                    {tx.status === TransactionStatus.Failed && (
-                      <span className="text-[8px] font-bold text-red-500 uppercase tracking-wide font-mono flex items-center gap-1">
-                        <span className="w-1 h-1 bg-red-500 rounded-full" />
-                        Failed
-                      </span>
-                    )}
-                  </div>
+                {/* Right Side: Completed/Pending Button Badge */}
+                <div>
+                  {tx.status === TransactionStatus.Success ? (
+                    <div className="bg-[#132c25] text-[#29a779] px-5 py-2 rounded-full text-[11px] sm:text-xs font-bold text-center select-none shadow-sm">
+                      Completed
+                    </div>
+                  ) : tx.status === TransactionStatus.Pending || tx.status === TransactionStatus.Hold ? (
+                    <div className="bg-[#2d2412] text-[#b3952b] px-5 py-2 rounded-full text-[11px] sm:text-xs font-bold text-center select-none shadow-sm animate-pulse">
+                      Pending
+                    </div>
+                  ) : (
+                    <div className="bg-[#2d1212] text-[#c93b3b] px-5 py-2 rounded-full text-[11px] sm:text-xs font-bold text-center select-none shadow-sm">
+                      Rejected
+                    </div>
+                  )}
                 </div>
               </div>
             );

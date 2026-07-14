@@ -76,6 +76,7 @@ export interface Transaction {
   requiresApproval?: boolean;
   tradePair?: string; // Selected random trading pair
   traderAvatar?: string; // Copier custom photo
+  orderNumber?: string; // Custom code entered by user
 }
 
 export interface Trader {

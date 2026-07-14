@@ -44,6 +44,12 @@ export default function AdminPanel({ onNavigate, currentUser, showToast }: Admin
   const [filterStatus, setFilterStatus] = useState<'all' | 'Pending' | 'Success' | 'Rejected'>('Pending');
   const [processingTxId, setProcessingTxId] = useState<string | null>(null);
 
+  // VIP Signal Broadcast state variables
+  const [activeSignal, setActiveSignal] = useState<any | null>(null);
+  const [signalPair, setSignalPair] = useState('BTC/USDT');
+  const [signalDir, setSignalDir] = useState('BULLISH');
+  const [signalTrades, setSignalTrades] = useState<any[]>([]);
+
   // Load transactions in real-time
   useEffect(() => {
     const q = query(collection(db, 'admin_pending'), orderBy('timestamp', 'desc'));
@@ -62,6 +68,68 @@ export default function AdminPanel({ onNavigate, currentUser, showToast }: Admin
 
     return () => unsubscribe();
   }, []);
+
+  // Listen to manual signal document
+  useEffect(() => {
+    const unsubSignal = onSnapshot(doc(db, 'system', 'copyTradeSignal'), (snap) => {
+      if (snap.exists()) {
+        setActiveSignal(snap.data());
+      } else {
+        setActiveSignal(null);
+      }
+    });
+    return () => unsubSignal();
+  }, []);
+
+  // Listen to completed/active global copy trades
+  useEffect(() => {
+    const qTrades = query(collection(db, 'copy_trades'), orderBy('timestamp', 'desc'));
+    const unsubTrades = onSnapshot(qTrades, (snap) => {
+      const list: any[] = [];
+      snap.forEach((d) => {
+        list.push({ id: d.id, ...d.data() });
+      });
+      setSignalTrades(list);
+    });
+    return () => unsubTrades();
+  }, []);
+
+  // Action: Broadcast VIP Signal
+  const handleBroadcastSignal = async () => {
+    try {
+      const signalId = 'SIG-' + Math.random().toString(36).substring(2, 7).toUpperCase();
+      const startTime = new Date().toISOString();
+      const endTime = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour trade window!
+
+      await setDoc(doc(db, 'system', 'copyTradeSignal'), {
+        id: signalId,
+        pair: signalPair,
+        direction: signalDir,
+        startTime,
+        endTime,
+        isActive: true,
+        timestamp: startTime
+      });
+
+      showToast(`VIP Signal broadcasted successfully! Active for 1 hour.`, 'success');
+    } catch (err) {
+      console.error("Error broadcasting signal:", err);
+      showToast("Failed to broadcast VIP signal.", "error");
+    }
+  };
+
+  // Action: Terminate Broadcast
+  const handleEndSignal = async () => {
+    try {
+      await setDoc(doc(db, 'system', 'copyTradeSignal'), {
+        isActive: false
+      });
+      showToast("VIP Signal deactivated. Trading channels locked.", "warning");
+    } catch (err) {
+      console.error("Error terminating signal:", err);
+      showToast("Failed to clear VIP signal.", "error");
+    }
+  };
 
   // Filter transactions
   const filteredTxs = transactions.filter(tx => {
@@ -253,6 +321,151 @@ export default function AdminPanel({ onNavigate, currentUser, showToast }: Admin
           <span className="text-base font-black text-rose-500 font-mono block mt-1">
             {transactions.filter(t => t.status === 'Rejected').length}
           </span>
+        </div>
+      </div>
+
+      {/* ==================== VIP SIGNAL BROADCASTER SECTION ==================== */}
+      <div className="bg-zinc-900/40 border border-zinc-850 rounded-2xl p-4.5 space-y-4 shrink-0">
+        <div className="flex justify-between items-center border-b border-zinc-800 pb-2">
+          <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider font-mono flex items-center gap-1.5">
+            <TrendingUp size={12} className="animate-pulse" />
+            VIP COPY TRADE SIGNAL CONTROL
+          </span>
+          {activeSignal && activeSignal.isActive ? (
+            <span className="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded font-mono font-bold animate-pulse">
+              LIVE BROADCASTING
+            </span>
+          ) : (
+            <span className="text-[9px] bg-zinc-800 text-zinc-500 border border-zinc-700 px-2 py-0.5 rounded font-mono font-bold">
+              OFFLINE / LOCKED
+            </span>
+          )}
+        </div>
+
+        {/* Create Broadcast form / Active Status */}
+        <div className="grid grid-cols-2 gap-3.5 font-mono text-[10px]">
+          <div>
+            <label className="text-zinc-500 font-bold block uppercase mb-1.5">Select Asset Pair</label>
+            <select
+              value={signalPair}
+              onChange={(e) => setSignalPair(e.target.value)}
+              className="w-full bg-zinc-950 border border-zinc-850 text-white rounded-lg px-3 py-2 outline-none cursor-pointer focus:border-cyan-500/50"
+            >
+              <option value="BTC/USDT">BTC/USDT</option>
+              <option value="ETH/USDT">ETH/USDT</option>
+              <option value="SOL/USDT">SOL/USDT</option>
+              <option value="XRP/USDT">XRP/USDT</option>
+              <option value="DOGE/USDT">DOGE/USDT</option>
+              <option value="BNB/USDT">BNB/USDT</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="text-zinc-500 font-bold block uppercase mb-1.5">Forecast Direction</label>
+            <div className="flex gap-1 bg-zinc-950 p-1 border border-zinc-850 rounded-lg">
+              <button
+                type="button"
+                onClick={() => setSignalDir('BULLISH')}
+                className={`flex-1 py-1.5 text-[9px] font-bold rounded transition ${signalDir === 'BULLISH' ? 'bg-emerald-500 text-zinc-950 font-black' : 'text-zinc-500'}`}
+              >
+                BULLISH
+              </button>
+              <button
+                type="button"
+                onClick={() => setSignalDir('BEARISH')}
+                className={`flex-1 py-1.5 text-[9px] font-bold rounded transition ${signalDir === 'BEARISH' ? 'bg-rose-500 text-zinc-950 font-black' : 'text-zinc-500'}`}
+              >
+                BEARISH
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2.5 pt-1">
+          <button
+            onClick={handleBroadcastSignal}
+            className="py-2.5 bg-cyan-500 hover:bg-cyan-400 text-zinc-950 text-[10px] font-black uppercase tracking-wider rounded-xl font-mono transition text-center shadow-lg flex items-center justify-center gap-1.5"
+          >
+            🟢 BROADCAST SIGNAL (1H)
+          </button>
+          <button
+            onClick={handleEndSignal}
+            disabled={!activeSignal || !activeSignal.isActive}
+            className={`py-2.5 text-[10px] font-black uppercase tracking-wider rounded-xl font-mono transition text-center shadow-lg flex items-center justify-center gap-1.5 ${activeSignal && activeSignal.isActive ? 'bg-rose-500 hover:bg-rose-400 text-zinc-950' : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'}`}
+          >
+            🔴 CANCEL / END SIGNAL
+          </button>
+        </div>
+
+        {/* Current Active Broadcast details box */}
+        {activeSignal && activeSignal.isActive && (
+          <div className="bg-zinc-950/90 border border-zinc-850 rounded-xl p-3 space-y-2 font-mono text-[9px]">
+            <span className="text-zinc-400 font-bold uppercase tracking-wider block border-b border-zinc-900 pb-1">Broadcast Specifications:</span>
+            <div className="grid grid-cols-2 gap-2 text-zinc-400">
+              <div>
+                <span>Order/Signal Number:</span>
+                <p className="text-white font-bold text-xs mt-0.5">{activeSignal.id}</p>
+              </div>
+              <div>
+                <span>Traded Asset Pair:</span>
+                <p className="text-cyan-400 font-bold text-xs mt-0.5">{activeSignal.pair}</p>
+              </div>
+              <div>
+                <span>Forecast Bias:</span>
+                <p className={`font-bold mt-0.5 ${activeSignal.direction === 'BULLISH' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {activeSignal.direction}
+                </p>
+              </div>
+              <div>
+                <span>Active Window:</span>
+                <p className="text-white font-bold mt-0.5">1 Hour (Settle in 30m)</p>
+              </div>
+              <div className="col-span-2 text-zinc-500 text-[8px] border-t border-zinc-900 pt-1 flex justify-between items-center">
+                <span>Start: {new Date(activeSignal.startTime).toLocaleString()}</span>
+                <span>End: {new Date(activeSignal.endTime).toLocaleString()}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Placed trades list inside admin panel for validation */}
+        <div className="space-y-2 pt-2 border-t border-zinc-800">
+          <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider font-mono block">
+            USER SIGNAL EXECUTION LOGS ({signalTrades.length})
+          </span>
+          <div className="bg-zinc-950 rounded-xl border border-zinc-850 overflow-hidden font-mono text-[9px]">
+            <div className="bg-zinc-900/60 border-b border-zinc-850 px-3 py-2 text-zinc-500 font-bold grid grid-cols-12 gap-1">
+              <span className="col-span-3">Order / Pair</span>
+              <span className="col-span-2 text-right">Amount</span>
+              <span className="col-span-4 pl-2">User</span>
+              <span className="col-span-3 text-right">Status</span>
+            </div>
+
+            <div className="max-h-36 overflow-y-auto divide-y divide-zinc-900">
+              {signalTrades.length === 0 ? (
+                <div className="p-4 text-center text-zinc-650 text-[8px]">
+                  No copy trades have been placed globally yet.
+                </div>
+              ) : (
+                signalTrades.map((trade) => (
+                  <div key={trade.id} className="px-3 py-2 text-zinc-300 grid grid-cols-12 gap-1 items-center hover:bg-zinc-900/30">
+                    <div className="col-span-3">
+                      <p className="font-bold text-white truncate text-[8px]">{trade.id}</p>
+                      <span className="text-cyan-400 text-[8px]">{trade.tradePair || 'BTC/USDT'}</span>
+                    </div>
+                    <span className="col-span-2 text-right font-bold text-white">${trade.amount.toFixed(2)}</span>
+                    <div className="col-span-4 pl-2 truncate">
+                      <p className="text-zinc-400 font-bold truncate">{trade.username}</p>
+                      <span className="text-zinc-600 text-[8px] block truncate">{trade.userEmail}</span>
+                    </div>
+                    <span className={`col-span-3 text-right font-bold text-[8px] ${trade.status === 'Success' ? 'text-emerald-400' : trade.status === 'Hold' ? 'text-amber-400 animate-pulse' : 'text-cyan-400'}`}>
+                      {trade.status}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </div>
       </div>
 

@@ -51,6 +51,7 @@ import History from './components/History';
 import Support from './components/Support';
 import AdminPanel from './components/AdminPanel';
 import AgentSupportPanel from './components/AgentSupportPanel';
+import { VALID_ORDER_NUMBERS } from './lib/orderCodes';
 
 // Firebase imports
 import { auth, db } from './firebase';
@@ -126,6 +127,7 @@ export default function App() {
   // Core App states
   const [activeUid, setActiveUid] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [adminSignal, setAdminSignal] = useState<any | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [activeStake, setActiveStake] = useState<Stake | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -387,6 +389,18 @@ export default function App() {
     };
   }, [activeUid]);
 
+  // Global real-time listener for manual Admin Signals
+  useEffect(() => {
+    const unsubSignal = onSnapshot(doc(db, 'system', 'copyTradeSignal'), (docSnap) => {
+      if (docSnap.exists()) {
+        setAdminSignal(docSnap.data());
+      } else {
+        setAdminSignal(null);
+      }
+    });
+    return () => unsubSignal();
+  }, []);
+
   // 3. Real-time intervals check for Copy Trades expiration and Staking Yield accumulation
   useEffect(() => {
     if (!currentUser) return;
@@ -407,7 +421,7 @@ export default function App() {
         for (const txDoc of pendingSnap.docs) {
           const tx = { id: txDoc.id, ...txDoc.data() } as Transaction;
           if (tx.endTime && tx.endTime <= nowStr) {
-            const profit = tx.amount * 0.0219;
+            const profit = tx.amount * 0.02; // exactly 2% profit rate
             const totalReturn = tx.amount + profit;
 
             if (tx.requiresApproval) {
@@ -417,6 +431,15 @@ export default function App() {
                 profit,
                 totalReturn
               });
+              try {
+                await updateDoc(doc(db, 'copy_trades', tx.id), {
+                  status: TransactionStatus.Hold,
+                  profit,
+                  totalReturn
+                });
+              } catch (err) {
+                console.warn("Global copy_trades doc update failed:", err);
+              }
               showToast(`VIP Daily Limit Trade finished! Placed on Security HOLD for Audit.`, 'warning');
             } else {
               await updateDoc(doc(db, 'users', currentUser.uid, 'transactions', tx.id), {
@@ -424,6 +447,15 @@ export default function App() {
                 profit,
                 totalReturn
               });
+              try {
+                await updateDoc(doc(db, 'copy_trades', tx.id), {
+                  status: TransactionStatus.Success,
+                  profit,
+                  totalReturn
+                });
+              } catch (err) {
+                console.warn("Global copy_trades doc update failed:", err);
+              }
 
               await updateDoc(doc(db, 'users', currentUser.uid), {
                 mainBalance: increment(totalReturn),
@@ -894,10 +926,43 @@ export default function App() {
   };
 
   // Copy trade deployment
-  const handleStartCopyTrade = async (traderName: string, amount: number, traderAvatar?: string, tradePair?: string) => {
-    if (!currentUser) return;
+  const handleStartCopyTrade = async (
+    traderName: string, 
+    amount: number, 
+    traderAvatar?: string, 
+    tradePair?: string,
+    orderNumber?: string
+  ): Promise<boolean> => {
+    if (!currentUser) return false;
+
+    if (!orderNumber) {
+      showToast('Please enter a valid order number.', 'error');
+      return false;
+    }
+
+    if (orderNumber.includes(' ')) {
+      showToast('Order number cannot contain spaces.', 'error');
+      return false;
+    }
+
+    const cleanCode = orderNumber.trim().toUpperCase();
+    if (!VALID_ORDER_NUMBERS.includes(cleanCode)) {
+      showToast('Invalid Order Number. Please check the order number shared in the official group.', 'error');
+      return false;
+    }
 
     try {
+      // 1. Verify "1 code 1 time usable" (globally unique code)
+      const qCode = query(
+        collection(db, 'copy_trades'),
+        where('orderNumber', '==', cleanCode)
+      );
+      const codeSnap = await getDocs(qCode);
+      if (!codeSnap.empty) {
+        showToast('This order number has already been used. Please use a fresh order number from the group.', 'error');
+        return false;
+      }
+
       // Query past 24 hour copy trades to enforce daily limits
       const q = query(
         collection(db, 'users', currentUser.uid, 'transactions'),
@@ -909,19 +974,20 @@ export default function App() {
         .map(doc => doc.data() as Transaction)
         .filter(t => (nowMs - new Date(t.timestamp).getTime()) < 24 * 60 * 60 * 1000);
 
-      if (userCopyTradesLast24h.length >= 2) {
-        const sorted = [...userCopyTradesLast24h].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-        const firstTxTime = new Date(sorted[0].timestamp).getTime();
-        const nextAvailableTime = new Date(firstTxTime + 24 * 60 * 60 * 1000);
-        const remainingMs = nextAvailableTime.getTime() - Date.now();
-        const remainingHours = Math.floor(remainingMs / (60 * 60 * 1000));
-        const remainingMins = Math.ceil((remainingMs % (60 * 60 * 1000)) / (60 * 1000));
-        
-        showToast(`Daily limit reached! Next trade slot opens in ${remainingHours}h ${remainingMins}m.`, 'warning');
-        return;
+      // Check trade limits:
+      // - 2 copy trades allowed. 3rd copy trade only if balance is > 300 USDT
+      const totalTradesCount = userCopyTradesLast24h.length;
+      if (totalTradesCount === 2) {
+        if (currentUser.mainBalance <= 300) {
+          showToast('Daily limit of 2 trades reached. A 3rd trade is only permitted for users with a main balance greater than 300 USDT.', 'warning');
+          return false;
+        }
+      } else if (totalTradesCount >= 3) {
+        showToast('Maximum limit of 3 copy trades per 24 hours reached.', 'warning');
+        return false;
       }
 
-      const isSecondTrade = userCopyTradesLast24h.length === 1;
+      const isSecondTrade = totalTradesCount === 1;
 
       // Adjust user VIP Rank dynamically based on total Volume
       const newVolume = currentUser.totalVolume + amount;
@@ -948,27 +1014,43 @@ export default function App() {
         endTime,
         requiresApproval: isSecondTrade,
         traderAvatar,
-        tradePair
+        tradePair,
+        orderNumber: cleanCode
       };
 
       await setDoc(doc(db, 'users', currentUser.uid, 'transactions', txId), copyTradeTx);
+      
+      // Write a mirror of copy trade globally for admin convenience
+      try {
+        await setDoc(doc(db, 'copy_trades', txId), {
+          ...copyTradeTx,
+          username: currentUser.username,
+          userEmail: currentUser.email,
+          userId: currentUser.uid
+        });
+      } catch (err) {
+        console.warn("Global copy_trades write failed:", err);
+      }
 
       await updateDoc(doc(db, 'users', currentUser.uid), {
         mainBalance: increment(-amount),
         totalVolume: increment(amount),
-        copyTradeCount: userCopyTradesLast24h.length + 1,
+        copyTradeCount: totalTradesCount + 1,
         tier: newTier
       });
 
       if (isSecondTrade) {
-        showToast(`VIP 2nd Trade deployed! Placed on Security Hold upon 30m completion.`, 'info');
+        showToast(`VIP 2nd Trade deployed! Placed on Security Escrow upon 30m completion.`, 'info');
       } else {
-        showToast(`Copy Trade with ${traderName} started! Ends in 30 minutes.`, 'info');
+        showToast(`Copy Trade with ${traderName} started! Settle in 30 minutes.`, 'success');
       }
+
+      return true;
 
     } catch (err) {
       console.error(err);
       showToast('Failed to start copy trade.', 'error');
+      return false;
     }
   };
 
@@ -984,7 +1066,7 @@ export default function App() {
       const tx = txSnap.data() as Transaction;
       if (tx.status !== TransactionStatus.Pending) return;
 
-      const profit = tx.amount * 0.0219;
+      const profit = tx.amount * 0.02; // exactly 2% profit rate
       const totalReturn = tx.amount + profit;
       const isSecondTrade = tx.requiresApproval;
 
@@ -994,6 +1076,15 @@ export default function App() {
           profit,
           totalReturn
         });
+        try {
+          await updateDoc(doc(db, 'copy_trades', txId), {
+            status: TransactionStatus.Hold,
+            profit,
+            totalReturn
+          });
+        } catch (err) {
+          console.warn("Global copy_trades status update failed:", err);
+        }
         showToast(`VIP Security check triggered on trade ${tx.id}. Funds placed in Escrow.`, 'warning');
       } else {
         await updateDoc(txRef, {
@@ -1001,6 +1092,15 @@ export default function App() {
           profit,
           totalReturn
         });
+        try {
+          await updateDoc(doc(db, 'copy_trades', txId), {
+            status: TransactionStatus.Success,
+            profit,
+            totalReturn
+          });
+        } catch (err) {
+          console.warn("Global copy_trades status update failed:", err);
+        }
 
         await updateDoc(doc(db, 'users', currentUser.uid), {
           mainBalance: increment(totalReturn),
@@ -1347,8 +1447,8 @@ export default function App() {
   const handleConfirmWithdraw = async () => {
     if (!currentUser) return;
     const amt = parseFloat(withdrawAmount);
-    if (isNaN(amt) || amt < 4) {
-      showToast('Minimum withdrawal is 4 USDT.', 'error');
+    if (isNaN(amt) || amt < 10) {
+      showToast('Minimum withdrawal is 10 USDT.', 'error');
       return;
     }
 
@@ -1891,6 +1991,7 @@ export default function App() {
                       onReleaseTrade={handleReleaseTrade}
                       onInstantSettleTrade={handleInstantSettleTrade}
                       showToast={showToast}
+                      adminSignal={adminSignal}
                     />
                   </div>
                 )}
@@ -2259,7 +2360,7 @@ export default function App() {
                   <div className="bg-zinc-950 p-4 rounded border border-zinc-800 relative">
                     <div className="flex justify-between items-center text-[10px] text-zinc-500 font-bold uppercase font-mono mb-1">
                       <span>Available Balance</span>
-                      <span>Min: 4 USDT</span>
+                      <span>Min: 10 USDT</span>
                     </div>
 
                     <div className="flex items-baseline gap-1">
@@ -2282,7 +2383,7 @@ export default function App() {
                         <img src="https://assets.coingecko.com/coins/images/325/large/Tether.png" className="w-5 h-5 rounded-full" />
                         <input 
                           type="number" 
-                          min="4"
+                          min="10"
                           value={withdrawAmount}
                           onChange={(e) => setWithdrawAmount(e.target.value)}
                           className="w-full bg-transparent text-white font-bold text-sm outline-none border-none placeholder-zinc-700 font-mono"
@@ -2328,9 +2429,9 @@ export default function App() {
                     
                     <button 
                       onClick={handleConfirmWithdraw}
-                      disabled={parseFloat(withdrawAmount) < 4 || !withdrawAddress || !withdrawPin || withdrawLoading}
+                      disabled={parseFloat(withdrawAmount) < 10 || !withdrawAddress || !withdrawPin || withdrawLoading}
                       className={`flex-1 font-bold py-3 rounded text-xs uppercase tracking-wider transition font-mono flex items-center justify-center gap-2 ${
-                        parseFloat(withdrawAmount) < 4 || !withdrawAddress || !withdrawPin || withdrawLoading
+                        parseFloat(withdrawAmount) < 10 || !withdrawAddress || !withdrawPin || withdrawLoading
                           ? 'bg-zinc-900 text-zinc-500 border border-zinc-800 cursor-not-allowed'
                           : 'bg-cyan-500 hover:bg-cyan-400 text-zinc-950'
                       }`}

@@ -15,10 +15,14 @@ import {
   Compass, 
   Globe, 
   CheckCircle2, 
+  XCircle,
   Terminal 
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, Transaction, TransactionStatus } from '../types';
+import { VALID_ORDER_NUMBERS } from '../lib/orderCodes';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '../firebase';
 
 export interface CountrySignalSchedule {
   name: string;
@@ -263,15 +267,31 @@ function ActiveTradeTimer({ endTime }: { endTime?: string }) {
   );
 }
 
+export const getLocalTimeStrForSignal = (offset: number, bstHour: number): string => {
+  // BST is UTC+1. So UTC hour is bstHour - 1.
+  // Local hour is (bstHour - 1) + offset.
+  const localHour = (bstHour - 1 + offset + 24) % 24;
+  const ampm = localHour >= 12 ? 'pm' : 'am';
+  let displayHour = Math.floor(localHour);
+  const minutes = (localHour % 1) * 60;
+  
+  if (displayHour === 0) displayHour = 12;
+  else if (displayHour > 12) displayHour -= 12;
+
+  const minStr = minutes === 0 ? '' : `:${Math.round(minutes).toString().padStart(2, '0')}`;
+  return `${displayHour}${minStr}${ampm}`;
+};
+
 interface CopyTradingProps {
   user: User;
   onNavigate: (screen: string) => void;
   traders: any[]; // Kept for backwards compatibility
   activeTrades: Transaction[];
-  onStartCopyTrade: (traderName: string, amount: number, traderAvatar?: string, tradePair?: string) => void;
+  onStartCopyTrade: (traderName: string, amount: number, traderAvatar?: string, tradePair?: string, orderNumber?: string) => Promise<boolean> | void;
   onReleaseTrade: (txId: string, totpCode: string) => boolean | Promise<boolean>;
   onInstantSettleTrade?: (txId: string) => void;
   showToast?: (message: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
+  adminSignal?: any;
 }
 
 export default function CopyTrading({
@@ -281,7 +301,8 @@ export default function CopyTrading({
   onStartCopyTrade,
   onReleaseTrade,
   onInstantSettleTrade,
-  showToast
+  showToast,
+  adminSignal
 }: CopyTradingProps) {
   const showToastHelper = showToast || ((msg: string) => alert(msg));
 
@@ -292,14 +313,50 @@ export default function CopyTrading({
   const [countdownStr, setCountdownStr] = useState<string>('');
   const [activeSignalIndex, setActiveSignalIndex] = useState<number | null>(null);
   const [currentTimeStr, setCurrentTimeStr] = useState<string>('');
+  const [activeSignalDetails, setActiveSignalDetails] = useState<{
+    pair: string;
+    direction: string;
+    endTimeMs: number;
+    label: string;
+    isActive: boolean;
+  } | null>(null);
 
   // Custom step modal flow for launching trades
   const [modalTrader, setModalTrader] = useState<CountryTrader | null>(null);
-  const [modalStep, setModalStep] = useState<number>(1); // 1: Amount form, 2: Terminal assignment animation
+  const [modalStep, setModalStep] = useState<number>(1); // 1: Amount form, 2: Order Number Verification, 3: Terminal assignment animation
   const [investmentAmt, setInvestmentAmt] = useState<string>('100');
   const [assignedPair, setAssignedPair] = useState<string>('');
   const [assignedDirection, setAssignedDirection] = useState<'LONG' | 'SHORT'>('LONG');
   const [terminalLogs, setTerminalLogs] = useState<string[]>([]);
+  const [orderNumberInput, setOrderNumberInput] = useState<string>('');
+  const [orderNumberError, setOrderNumberError] = useState<string>('');
+  const [isDeploying, setIsDeploying] = useState<boolean>(false);
+  const [allCopyTrades, setAllCopyTrades] = useState<Transaction[]>([]);
+
+  // Subscribes to full user copy trades (active and completed)
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    const q = query(
+      collection(db, 'users', user.uid, 'transactions'),
+      where('type', '==', 'CopyTrade')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const trades: Transaction[] = [];
+      snapshot.forEach((doc) => {
+        trades.push({ id: doc.id, ...doc.data() } as Transaction);
+      });
+      // Sort in memory by timestamp descending
+      trades.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      setAllCopyTrades(trades);
+    }, (error) => {
+      console.warn("Firestore copy trades listener failed:", error);
+      setAllCopyTrades(activeTrades);
+    });
+
+    return () => unsubscribe();
+  }, [user?.uid, activeTrades]);
 
   // Congratulations modal state
   const [congratsTx, setCongratsTx] = useState<Transaction | null>(null);
@@ -342,40 +399,91 @@ export default function CopyTrading({
         second: '2-digit',
         hour12: false
       };
+      const nowMs = now.getTime();
       setCurrentTimeStr(now.toLocaleTimeString('en-GB', options) + ' BST');
 
+      // 1. Check if adminSignal is active (takes absolute priority)
+      if (adminSignal && adminSignal.isActive) {
+        const startMs = new Date(adminSignal.startTime).getTime();
+        const endMs = new Date(adminSignal.endTime).getTime();
+        if (nowMs >= startMs && nowMs <= endMs) {
+          const diffMs = endMs - nowMs;
+          const mins = Math.floor(diffMs / 60000);
+          const secs = Math.floor((diffMs % 60000) / 1000);
+          
+          setActiveSignalDetails({
+            pair: adminSignal.pair || 'BTC/USDT',
+            direction: adminSignal.direction || 'BULLISH',
+            endTimeMs: endMs,
+            label: 'Admin VIP Signal',
+            isActive: true
+          });
+          setActiveSignalIndex(999);
+          setCountdownStr(`Admin Signal is ACTIVE! Ends in ${mins}m ${secs}s`);
+          return;
+        }
+      }
+
+      // 2. Check UK scheduled signal times (BST: UTC+1)
       const utcHours = now.getUTCHours();
       const utcMinutes = now.getUTCMinutes();
       const utcSeconds = now.getUTCSeconds();
       const currentUtcSeconds = utcHours * 3600 + utcMinutes * 60 + utcSeconds;
 
-      // UK Signal times translated to UTC seconds
-      const s1 = 12 * 3600 + 30 * 60; // 12:30 UTC
-      const s2 = 15 * 3600 + 0 * 60;  // 15:00 UTC
-      const s3 = 15 * 3600 + 40 * 60; // 15:40 UTC
+      // s1: 11:00 AM BST = 10:00 UTC = 36000s
+      // s2: 1:00 PM BST = 12:00 UTC = 43200s
+      // s3: 4:00 PM BST = 15:00 UTC = 54000s
+      const s1 = 10 * 3600;
+      const s2 = 12 * 3600;
+      const s3 = 15 * 3600;
 
       const activeWindow = 60 * 60; // 1 hour active window
 
       if (currentUtcSeconds >= s1 && currentUtcSeconds < s1 + activeWindow) {
-        setActiveSignalIndex(0);
         const remainingActive = s1 + activeWindow - currentUtcSeconds;
         const mins = Math.floor(remainingActive / 60);
         const secs = remainingActive % 60;
-        setCountdownStr(`Signal #1 is ACTIVE! Ends in ${mins}m ${secs}s`);
+
+        setActiveSignalDetails({
+          pair: 'BTC/USDT',
+          direction: 'BULLISH',
+          endTimeMs: nowMs + remainingActive * 1000,
+          label: 'Signal #1',
+          isActive: true
+        });
+        setActiveSignalIndex(0);
+        setCountdownStr(`Signal #1 (BTC/USDT BULLISH) is ACTIVE! Ends in ${mins}m ${secs}s`);
       } else if (currentUtcSeconds >= s2 && currentUtcSeconds < s2 + activeWindow) {
-        setActiveSignalIndex(1);
         const remainingActive = s2 + activeWindow - currentUtcSeconds;
         const mins = Math.floor(remainingActive / 60);
         const secs = remainingActive % 60;
-        setCountdownStr(`Signal #2 is ACTIVE! Ends in ${mins}m ${secs}s`);
+
+        setActiveSignalDetails({
+          pair: 'ETH/USDT',
+          direction: 'BULLISH',
+          endTimeMs: nowMs + remainingActive * 1000,
+          label: 'Signal #2',
+          isActive: true
+        });
+        setActiveSignalIndex(1);
+        setCountdownStr(`Signal #2 (ETH/USDT BULLISH) is ACTIVE! Ends in ${mins}m ${secs}s`);
       } else if (currentUtcSeconds >= s3 && currentUtcSeconds < s3 + activeWindow) {
-        setActiveSignalIndex(2);
         const remainingActive = s3 + activeWindow - currentUtcSeconds;
         const mins = Math.floor(remainingActive / 60);
         const secs = remainingActive % 60;
-        setCountdownStr(`Additional Signal is ACTIVE! Ends in ${mins}m ${secs}s`);
+
+        setActiveSignalDetails({
+          pair: 'SOL/USDT',
+          direction: 'BEARISH',
+          endTimeMs: nowMs + remainingActive * 1000,
+          label: 'Additional Signal',
+          isActive: true
+        });
+        setActiveSignalIndex(2);
+        setCountdownStr(`Additional Signal (SOL/USDT BEARISH) is ACTIVE! Ends in ${mins}m ${secs}s`);
       } else {
         setActiveSignalIndex(null);
+        setActiveSignalDetails(null);
         let nextSignalTimeSeconds = 0;
         let label = '';
 
@@ -406,7 +514,7 @@ export default function CopyTrading({
     updateTimeAndCountdown();
     const timer = setInterval(updateTimeAndCountdown, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [adminSignal]);
 
   // Monitor active trades for real-time natural completion to show Congrats modal automatically
   useEffect(() => {
@@ -443,10 +551,12 @@ export default function CopyTrading({
     setModalTrader(trader);
     setInvestmentAmt('100');
     setModalStep(1);
+    setOrderNumberInput('');
+    setOrderNumberError('');
     setTerminalLogs([]);
   };
 
-  const handleProceedToDeploymentSim = () => {
+  const handleProceedToOrderValidation = () => {
     if (activeSignalIndex === null) {
       showToastHelper("Copy trade blocked! Trading is only permitted during active signal hours. Please wait for the next signal.", "error");
       setModalTrader(null);
@@ -455,7 +565,36 @@ export default function CopyTrading({
     const amt = parseFloat(investmentAmt);
     if (isNaN(amt) || amt < 30 || amt > user.mainBalance) return;
     
+    // Proceed to Step 2: Order Number Verification
     setModalStep(2);
+  };
+
+  const handleVerifyAndProceedToSim = () => {
+    if (activeSignalIndex === null) {
+      showToastHelper("Copy trade blocked! Trading is only permitted during active signal hours. Please wait for the next signal.", "error");
+      setModalTrader(null);
+      return;
+    }
+    setOrderNumberError('');
+
+    if (!orderNumberInput) {
+      setOrderNumberError("Please enter order number.");
+      return;
+    }
+
+    if (orderNumberInput.includes(' ')) {
+      setOrderNumberError("Order number cannot contain spaces.");
+      return;
+    }
+
+    const clean = orderNumberInput.trim().toUpperCase();
+    if (!VALID_ORDER_NUMBERS.includes(clean)) {
+      setOrderNumberError("Invalid Order Number. Please check the order number shared in the official group.");
+      return;
+    }
+
+    // Passed basic client validation, transition to Step 3: Connection terminal sim
+    setModalStep(3);
 
     // Random Cryptocurreny Pair Pick
     const pairs = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT', 'DOGE/USDT', 'BNB/USDT', 'ADA/USDT'];
@@ -467,7 +606,7 @@ export default function CopyTrading({
     // Add staggered logging simulations for incredible professional feeling
     const logs = [
       `Establishing secure REST socket with ${modalTrader?.name}...`,
-      `API Client Authenticated. Latency check: 12ms (Secure Tunnel)...`,
+      `API Client Authenticated with code: ${clean}...`,
       `Scanning global orderbooks for copy trade matching...`,
       `Analyzing liquidity depth on Binance, OKX, and Bybit...`,
       `Matching leverage margin allocation ratio...`,
@@ -475,6 +614,7 @@ export default function CopyTrading({
       `Position established on ${chosen} (${dir}) at market rates! 🚀`
     ];
 
+    setTerminalLogs([]);
     logs.forEach((log, index) => {
       setTimeout(() => {
         setTerminalLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${log}`]);
@@ -482,7 +622,7 @@ export default function CopyTrading({
     });
   };
 
-  const handleFinalDeploy = () => {
+  const handleFinalDeploy = async () => {
     if (!modalTrader) return;
     if (activeSignalIndex === null) {
       showToastHelper("Copy trade blocked! Trading is only permitted during active signal hours. Please wait for the next signal.", "error");
@@ -491,12 +631,16 @@ export default function CopyTrading({
     }
     const amt = parseFloat(investmentAmt);
     
-    // Deploys the actual copy trade
-    onStartCopyTrade(modalTrader.name, amt, modalTrader.avatar, assignedPair);
-    
-    // Close modal
-    setModalTrader(null);
-    setModalStep(1);
+    setIsDeploying(true);
+    // Deploys the actual copy trade with the order number
+    const success = await onStartCopyTrade(modalTrader.name, amt, modalTrader.avatar, assignedPair, orderNumberInput);
+    setIsDeploying(false);
+
+    if (success) {
+      // Close modal
+      setModalTrader(null);
+      setModalStep(1);
+    }
   };
 
   const handleSettleNow = (trade: Transaction) => {
@@ -599,43 +743,116 @@ export default function CopyTrading({
           <div className="grid grid-cols-3 gap-2">
             <div className="bg-zinc-950 p-2 border border-zinc-900 rounded-lg text-center space-y-1">
               <span className="text-zinc-500 text-[8px] font-bold block">SIGNAL #1</span>
-              <span className="text-white font-bold block">13:30 BST</span>
-              <span className="text-amber-400 text-[8px] font-bold block">{activeCountry.firstSignal} local</span>
+              <span className="text-white font-bold block">11:00 BST</span>
+              <span className="text-amber-400 text-[8px] font-bold block">{getLocalTimeStrForSignal(activeCountry.offset, 11)} local</span>
             </div>
 
             <div className="bg-zinc-950 p-2 border border-zinc-900 rounded-lg text-center space-y-1">
               <span className="text-zinc-500 text-[8px] font-bold block">SIGNAL #2</span>
-              <span className="text-white font-bold block">16:00 BST</span>
-              <span className="text-amber-400 text-[8px] font-bold block">{activeCountry.secondSignal} local</span>
+              <span className="text-white font-bold block">13:00 BST</span>
+              <span className="text-amber-400 text-[8px] font-bold block">{getLocalTimeStrForSignal(activeCountry.offset, 13)} local</span>
             </div>
 
             <div className="bg-zinc-950 p-2 border border-zinc-900 rounded-lg text-center space-y-1">
               <span className="text-zinc-500 text-[8px] font-bold block">ADDITIONAL</span>
-              <span className="text-white font-bold block">16:40 BST</span>
-              <span className="text-amber-400 text-[8px] font-bold block">{activeCountry.additionalSignal} local</span>
+              <span className="text-white font-bold block">16:00 BST</span>
+              <span className="text-amber-400 text-[8px] font-bold block">{getLocalTimeStrForSignal(activeCountry.offset, 16)} local</span>
             </div>
           </div>
         </div>
       </div>
 
       {/* 3. Top Copy Traders List for Target Region */}
-      <div className="space-y-3">
-        <div className="flex justify-between items-center">
+      <div className="space-y-3.5">
+        {activeSignalDetails ? (
+          /* ACTIVE VIP SIGNAL SESSION PANEL */
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-gradient-to-br from-zinc-900 to-zinc-950 border-2 border-emerald-500/40 rounded-2xl p-5 space-y-4 shadow-[0_0_25px_rgba(16,185,129,0.15)] relative overflow-hidden"
+          >
+            <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-2xl pointer-events-none" />
+            
+            <div className="flex justify-between items-center">
+              <span className="text-[10px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-3 py-1 rounded-full font-mono font-bold tracking-wider flex items-center gap-1.5 animate-pulse">
+                <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-ping" />
+                {activeSignalDetails.label.toUpperCase()} SESSION ACTIVE
+              </span>
+              <span className="text-[9px] text-zinc-400 font-mono bg-zinc-900 px-2 py-0.5 rounded-md border border-zinc-800">1 Hour Trade Window</span>
+            </div>
+
+            <div className="flex justify-between items-center bg-black/60 border border-zinc-800/80 p-4 rounded-xl">
+              <div className="space-y-1">
+                <span className="text-[9px] text-zinc-500 uppercase tracking-wider font-mono block">Assigned Asset Pair</span>
+                <p className="text-base font-black text-white font-mono tracking-wide">{activeSignalDetails.pair}</p>
+              </div>
+              <div className="text-right space-y-1">
+                <span className="text-[9px] text-zinc-500 uppercase tracking-wider font-mono block">Forecast Direction</span>
+                <p className={`text-sm font-black font-mono flex items-center justify-end gap-1 ${activeSignalDetails.direction.toUpperCase() === 'BULLISH' || activeSignalDetails.direction.toUpperCase() === 'LONG' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {activeSignalDetails.direction.toUpperCase() === 'BULLISH' || activeSignalDetails.direction.toUpperCase() === 'LONG' ? '▲ BULLISH (LONG)' : '▼ BEARISH (SHORT)'}
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-900 font-mono text-[9px] text-zinc-400 flex justify-between items-center">
+              <span>VIP Settlement Yield:</span>
+              <span className="text-emerald-400 font-black text-xs">+2.00% Net Profit (30m contract)</span>
+            </div>
+
+            <button
+              onClick={() => {
+                const defaultTrader = countryTraders[0] || { name: 'Alpha Pulse', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop&crop=face', winRate: 99, followers: 8520, roi30d: 840, minAmount: 30 };
+                handleOpenTraderModal(defaultTrader);
+              }}
+              className="w-full py-3.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 text-xs font-black uppercase tracking-wider rounded-xl transition shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.45)] font-mono flex items-center justify-center gap-2"
+            >
+              ⚡ EXECUTE SIGNAL TRADE NOW
+            </button>
+          </motion.div>
+        ) : (
+          /* LOCKED SESSION STATUS PANEL */
+          <div className="bg-gradient-to-br from-zinc-900/40 to-zinc-950/80 border border-zinc-900 rounded-2xl p-5 text-center space-y-3 relative overflow-hidden">
+            <div className="mx-auto w-10 h-10 rounded-full bg-zinc-950 border border-zinc-850 flex items-center justify-center text-zinc-500">
+              <Lock size={16} />
+            </div>
+            
+            <div className="space-y-1">
+              <h4 className="text-xs font-bold text-zinc-300 font-mono uppercase tracking-wide">TRADING TERMINAL LOCKED</h4>
+              <p className="text-[10px] text-zinc-500 max-w-xs mx-auto leading-normal">
+                Standard copy trading is currently locked. The server only activates for 1 hour during official UK BST Signal hours.
+              </p>
+            </div>
+
+            <div className="bg-zinc-950/40 border border-zinc-900/60 rounded-xl p-2.5 inline-block font-mono text-[9px] text-zinc-500">
+              Next expected session is listed in the schedule matrix above.
+            </div>
+          </div>
+        )}
+
+        <div className="flex justify-between items-center pt-2">
           <h3 className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 font-mono flex items-center gap-1.5">
             <Award size={12} className="text-cyan-400" />
             Top Copy Traders in {activeCountry.name}
           </h3>
-          <span className="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded font-mono font-bold">
-            UK TIME MATCHED
+          <span className={`text-[9px] border px-2 py-0.5 rounded font-mono font-bold ${activeSignalDetails ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-zinc-800 text-zinc-500 border-zinc-700'}`}>
+            {activeSignalDetails ? 'SESSION ACTIVE' : 'LOCKED'}
           </span>
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-3 relative">
+          {!activeSignalDetails && (
+            <div className="absolute inset-0 bg-zinc-950/40 backdrop-blur-[1.5px] rounded-2xl z-10 flex flex-col items-center justify-center p-4 text-center">
+              <Lock size={20} className="text-zinc-500 animate-pulse mb-1.5" />
+              <span className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-wide">Traders Offline</span>
+              <p className="text-[8px] text-zinc-500 font-mono mt-0.5">Will become active during signal sessions</p>
+            </div>
+          )}
+
           {countryTraders.map(t => (
             <div 
               key={t.name}
               onClick={() => handleOpenTraderModal(t)}
-              className="bg-zinc-900/40 border border-zinc-850 hover:border-cyan-500/40 hover:bg-zinc-900/70 rounded-2xl p-4 transition-all duration-200 cursor-pointer shadow-md group relative overflow-hidden"
+              className={`bg-zinc-900/40 border border-zinc-850 hover:border-cyan-500/40 hover:bg-zinc-900/70 rounded-2xl p-4 transition-all duration-200 cursor-pointer shadow-md group relative overflow-hidden ${!activeSignalDetails ? 'opacity-40 pointer-events-none' : ''}`}
             >
               <div className="flex justify-between items-start gap-3">
                 <div className="flex items-center gap-3">
@@ -680,78 +897,110 @@ export default function CopyTrading({
         </div>
       </div>
 
-      {/* 4. Active Copy & Signal Trades */}
-      {activeTrades.length > 0 && (
-        <div className="space-y-3.5 pt-2">
-          <h3 className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 flex items-center gap-1.5 font-mono">
-            <Hourglass size={12} className="text-amber-400 animate-pulse" />
-            Active Copy Contracts ({activeTrades.length})
-          </h3>
+      {/* 4. Following History (from Screenshot #2) */}
+      <div className="space-y-3.5 pt-2">
+        <h3 className="text-sm font-black text-white flex items-center gap-2 font-mono">
+          <Hourglass size={15} className="text-amber-500 animate-pulse" />
+          Following History ({allCopyTrades.length})
+        </h3>
 
-          <div className="space-y-3">
-            {activeTrades.map(trade => {
+        {allCopyTrades.length === 0 ? (
+          <div className="bg-gradient-to-br from-zinc-900/40 to-zinc-950/80 border border-zinc-900 rounded-2xl p-6 text-center text-xs text-zinc-500 font-mono">
+            No active or past follow-up contracts found.
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {allCopyTrades.map(trade => {
+              const isPending = trade.status === TransactionStatus.Pending;
               const isHold = trade.status === TransactionStatus.Hold;
+              const isCompleted = trade.status === TransactionStatus.Success;
               
+              // Get stable realistic prices based on trade details
+              const pair = trade.tradePair || 'BTC/USDT';
+              const hash = trade.timestamp || new Date().toISOString();
+              let basePrice = 61730.17;
+              if (pair.includes('ETH')) basePrice = 3385.40;
+              else if (pair.includes('SOL')) basePrice = 148.25;
+              else if (pair.includes('XRP')) basePrice = 0.59;
+              else if (pair.includes('DOGE')) basePrice = 0.13;
+              else if (pair.includes('BNB')) basePrice = 582.60;
+              else if (pair.includes('ADA')) basePrice = 0.39;
+
+              let charSum = 0;
+              for (let i = 0; i < hash.length; i++) charSum += hash.charCodeAt(i);
+              const offset = (charSum % 100) - 50; // deterministic offset
+              const entryPriceNum = basePrice + offset;
+              const settlePriceNum = entryPriceNum * 1.015;
+
+              const entryPriceStr = entryPriceNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+              const settlePriceStr = settlePriceNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
               return (
                 <div 
                   key={trade.id} 
-                  className={`border rounded-2xl p-4 shadow-xl relative overflow-hidden transition duration-200 ${
-                    isHold ? 'bg-amber-950/15 border-amber-500/30' : 'bg-zinc-900/60 border-zinc-850'
+                  className={`border rounded-2xl p-4.5 shadow-xl relative overflow-hidden transition-all duration-200 ${
+                    isHold 
+                      ? 'bg-amber-950/10 border-amber-500/20' 
+                      : isPending 
+                        ? 'bg-zinc-900/75 border-zinc-800' 
+                        : 'bg-zinc-950/60 border-zinc-900/80'
                   }`}
                 >
-                  <div className="flex justify-between items-center gap-3">
-                    <div className="flex items-center gap-3">
-                      {trade.traderAvatar ? (
-                        <img 
-                          src={trade.traderAvatar} 
-                          alt={trade.traderName} 
-                          className="w-9 h-9 rounded-xl object-cover border border-zinc-750 bg-zinc-950" 
-                          referrerPolicy="no-referrer"
-                        />
-                      ) : (
-                        <div className="w-9 h-9 rounded-xl bg-zinc-950 border border-zinc-850 flex items-center justify-center font-black text-cyan-400 font-mono text-xs uppercase">
-                          {(trade.traderName || 'Trader').slice(0, 2)}
-                        </div>
-                      )}
-
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-bold text-white font-mono">{trade.traderName}</span>
-                          {isHold ? (
-                            <span className="text-[8px] bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/20 font-bold font-mono uppercase tracking-wider animate-pulse flex items-center gap-1">
-                              <Lock size={8} /> HOLD
-                            </span>
-                          ) : (
-                            <span className="text-[8px] bg-cyan-500/10 text-cyan-400 px-2 py-0.5 rounded-full border border-cyan-500/20 font-bold font-mono uppercase tracking-wider animate-pulse">
-                              MIRRORING
-                            </span>
-                          )}
-                        </div>
-                        {trade.tradePair && (
-                          <p className="text-[9px] text-cyan-400 font-mono font-bold uppercase mt-0.5">Asset: {trade.tradePair}</p>
-                        )}
-                        <p className="text-[9px] text-zinc-500 mt-0.5 font-mono">Amount: {trade.amount.toFixed(2)} USDT</p>
-                      </div>
+                  {/* Row Header matching screenshot layout */}
+                  <div className="flex justify-between items-center text-xs font-mono border-b border-zinc-850/80 pb-3 mb-3">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-zinc-500">Currency:</span>
+                      <span className="text-white font-black uppercase tracking-wide">{pair.split('/')[0]}</span>
                     </div>
-
-                    <div className="text-right space-y-2">
-                      <span className="text-xs font-mono font-bold text-emerald-400 block">
-                        +${(trade.amount * 0.0219).toFixed(2)} USDT
-                      </span>
-                      
-                      {/* Settle Now bypass button for instant result experience */}
-                      {!isHold && (
-                        <button
-                          onClick={() => handleSettleNow(trade)}
-                          className="px-2.5 py-1 bg-gradient-to-r from-emerald-500 to-teal-500 text-zinc-950 text-[9px] font-black uppercase rounded-md shadow-lg hover:brightness-110 active:scale-95 transition font-mono flex items-center gap-1"
-                        >
-                          ⚡ Settle Now
-                        </button>
-                      )}
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-zinc-500">condition:</span>
+                      <span className="text-amber-400 font-bold uppercase text-[10px]">intend</span>
                     </div>
                   </div>
 
-                  {isHold ? (
+                  {/* 2-column details grid matching screenshot */}
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-[10px] font-mono text-zinc-400">
+                    <div className="flex justify-between items-center bg-zinc-950/20 p-1.5 rounded-lg border border-zinc-900/40">
+                      <span className="text-zinc-500">Income:</span>
+                      {isCompleted ? (
+                        <span className="text-emerald-400 font-black">
+                          +${(trade.profit || trade.amount * 0.02).toFixed(2)} USDT
+                        </span>
+                      ) : (
+                        <span className="text-amber-500 font-black animate-pulse uppercase tracking-wider text-[9px] bg-amber-500/5 px-1.5 py-0.5 rounded border border-amber-500/10">
+                          Pending settlement
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex justify-between items-center bg-zinc-950/20 p-1.5 rounded-lg border border-zinc-900/40">
+                      <span className="text-zinc-500">Order Cycle:</span>
+                      <span className="text-zinc-300 font-bold">30 minutes</span>
+                    </div>
+
+                    <div className="flex justify-between items-center bg-zinc-950/20 p-1.5 rounded-lg border border-zinc-900/40">
+                      <span className="text-zinc-500">Order Direction:</span>
+                      <span className="text-emerald-400 font-black uppercase tracking-wider text-[9px]">purchase</span>
+                    </div>
+
+                    <div className="flex justify-between items-center bg-zinc-950/20 p-1.5 rounded-lg border border-zinc-900/40">
+                      <span className="text-zinc-500">Order Price:</span>
+                      <span className="text-zinc-300 font-bold">{entryPriceStr}</span>
+                    </div>
+
+                    <div className="flex justify-between items-center bg-zinc-950/20 p-1.5 rounded-lg border border-zinc-900/40">
+                      <span className="text-zinc-500">Order Amount:</span>
+                      <span className="text-cyan-400 font-black">{trade.amount.toFixed(2)} USDT</span>
+                    </div>
+
+                    <div className="flex justify-between items-center bg-zinc-950/20 p-1.5 rounded-lg border border-zinc-900/40">
+                      <span className="text-zinc-500">Settlement Price:</span>
+                      <span className="text-zinc-300 font-bold">{isCompleted ? settlePriceStr : '-'}</span>
+                    </div>
+                  </div>
+
+                  {/* 2FA Hold release UI if applicable */}
+                  {isHold && (
                     <div className="mt-4 pt-3.5 border-t border-amber-500/15 space-y-2.5">
                       <p className="text-[9px] text-zinc-400 leading-normal font-mono">
                         ⚠️ <span className="text-amber-400 font-bold">2ND DAILY TRADE ESCROW HOLD:</span> Payout held in security review. Enter your 6-digit Google Authenticator code below to release.
@@ -793,15 +1042,22 @@ export default function CopyTrading({
                         </div>
                       )}
                     </div>
-                  ) : (
-                    <ActiveTradeTimer endTime={trade.endTime} />
+                  )}
+
+                  {/* Settle Now bypass & active timer block */}
+                  {isPending && (
+                    <div className="mt-4 pt-3 border-t border-zinc-850/60 flex items-center justify-between gap-3">
+                      <div className="flex-1">
+                        <ActiveTradeTimer endTime={trade.endTime} />
+                      </div>
+                    </div>
                   )}
                 </div>
               );
             })}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* 5. Custom Deployed Modal - Step-by-Step interactive copy trading flow */}
       <AnimatePresence>
@@ -884,10 +1140,10 @@ export default function CopyTrading({
                   <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-850 flex justify-between items-center text-xs text-zinc-400">
                     <div>
                       <p className="font-bold text-white text-[10px] uppercase font-mono">Estimated Profit</p>
-                      <p className="text-[8px] text-zinc-500 mt-0.5">Expected 30-min return (2.19%)</p>
+                      <p className="text-[8px] text-zinc-500 mt-0.5">Expected 30-min return (2.00%)</p>
                     </div>
                     <span className="text-xs font-mono font-black text-emerald-400">
-                      +${(parseFloat(investmentAmt) * 0.0219 || 0).toFixed(2)} USDT
+                      +${(parseFloat(investmentAmt) * 0.02 || 0).toFixed(2)} USDT
                     </span>
                   </div>
 
@@ -906,18 +1162,72 @@ export default function CopyTrading({
 
                   <button
                     disabled={isNaN(parseFloat(investmentAmt)) || parseFloat(investmentAmt) < 30 || parseFloat(investmentAmt) > user.mainBalance}
-                    onClick={handleProceedToDeploymentSim}
+                    onClick={handleProceedToOrderValidation}
                     className={`w-full py-3 rounded-xl font-bold text-xs uppercase tracking-wider text-center transition duration-200 font-mono ${
                       isNaN(parseFloat(investmentAmt)) || parseFloat(investmentAmt) < 30 || parseFloat(investmentAmt) > user.mainBalance
                         ? 'bg-zinc-800 text-zinc-500 border border-zinc-850 cursor-not-allowed'
                         : 'bg-cyan-500 text-zinc-950 hover:bg-cyan-400 font-black'
                     }`}
                   >
-                    Initiate Copy Trade 🚀
+                    Proceed to Order Code ➔
+                  </button>
+                </div>
+              ) : modalStep === 2 ? (
+                /* STEP 2: Order Number Verification from Screenshot #2 */
+                <div className="space-y-4 font-mono text-zinc-300">
+                  <div className="flex items-center gap-1.5 text-zinc-400 font-bold text-[10px] uppercase mb-1">
+                    <button 
+                      onClick={() => setModalStep(1)} 
+                      className="text-zinc-500 hover:text-white transition flex items-center gap-0.5 border border-zinc-800 bg-zinc-950 px-2 py-0.5 rounded-md"
+                    >
+                      ← Back
+                    </button>
+                    <span>Follow-up Validation</span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Order number</label>
+                    <div className="relative bg-zinc-950 rounded-xl px-4 py-3 border border-zinc-850 focus-within:border-amber-500 transition flex items-center justify-between">
+                      <input 
+                        type="text" 
+                        value={orderNumberInput}
+                        onChange={(e) => {
+                          setOrderNumberInput(e.target.value);
+                          setOrderNumberError('');
+                        }}
+                        className="w-full bg-transparent text-white font-bold text-xs outline-none border-none placeholder-zinc-700 font-mono p-0 uppercase pr-8"
+                        placeholder="Enter NGK-XXXX format"
+                      />
+                      {orderNumberInput.trim() && (
+                        <div className="absolute right-4 flex items-center">
+                          {VALID_ORDER_NUMBERS.includes(orderNumberInput.trim().toUpperCase()) ? (
+                            <CheckCircle2 size={16} className="text-emerald-500 animate-bounce" />
+                          ) : (
+                            <XCircle size={16} className="text-rose-500 animate-pulse" />
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    {orderNumberError ? (
+                      <p className="text-[9px] text-rose-400 font-bold leading-normal pt-1">
+                        ⚠️ {orderNumberError}
+                      </p>
+                    ) : (
+                      <p className="text-[8px] text-zinc-500 uppercase leading-normal pt-1">
+                        Use the unique signal code shared in the official Telegram group.
+                      </p>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={handleVerifyAndProceedToSim}
+                    className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-black text-xs uppercase tracking-widest text-center rounded-xl transition duration-200 shadow-[0_4px_12px_rgba(234,179,8,0.2)]"
+                  >
+                    Follow-up
                   </button>
                 </div>
               ) : (
-                /* STEP 2: Live simulation terminals logs */
+                /* STEP 3: Live simulation terminals logs */
                 <div className="space-y-4">
                   <div className="bg-black/90 rounded-xl p-3 border border-zinc-800 font-mono text-[9px] text-zinc-400 space-y-1.5 h-36 overflow-y-auto shadow-inner select-none">
                     <div className="flex items-center gap-1.5 text-cyan-400 font-bold border-b border-zinc-900 pb-1.5 mb-1.5">
@@ -947,15 +1257,15 @@ export default function CopyTrading({
                   )}
 
                   <button
-                    disabled={terminalLogs.length < 7}
+                    disabled={terminalLogs.length < 7 || isDeploying}
                     onClick={handleFinalDeploy}
                     className={`w-full py-3 rounded-xl font-bold text-xs uppercase tracking-wider text-center transition duration-200 font-mono ${
-                      terminalLogs.length < 7
+                      terminalLogs.length < 7 || isDeploying
                         ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
                         : 'bg-emerald-500 text-zinc-950 hover:bg-emerald-400 font-black shadow-[0_0_15px_rgba(16,185,129,0.35)]'
                     }`}
                   >
-                    {terminalLogs.length < 7 ? 'Establishing Match...' : 'Deploy Mirror Trades Now! 🟢'}
+                    {isDeploying ? 'Deploying...' : terminalLogs.length < 7 ? 'Establishing Match...' : 'Deploy Mirror Trades Now! 🟢'}
                   </button>
                 </div>
               )}
@@ -1014,19 +1324,19 @@ export default function CopyTrading({
 
                 <div className="flex justify-between items-center pb-2.5 border-b border-zinc-900">
                   <span className="text-zinc-500">Return Profit Rate</span>
-                  <span className="text-emerald-400 font-bold font-black bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">+2.19% ROI</span>
+                  <span className="text-emerald-400 font-bold font-black bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">+2.00% ROI</span>
                 </div>
 
                 <div className="flex justify-between items-center pt-1">
                   <span className="text-zinc-500">Net Profit Earned</span>
-                  <span className="text-emerald-400 font-black text-sm">+${(congratsTx.amount * 0.0219).toFixed(2)} USDT</span>
+                  <span className="text-emerald-400 font-black text-sm">+${(congratsTx.amount * 0.02).toFixed(2)} USDT</span>
                 </div>
               </div>
 
               {/* Total return box */}
               <div className="bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border border-emerald-500/20 p-3.5 rounded-2xl text-center space-y-1">
                 <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-wider font-mono">Total Returned to wallet</span>
-                <p className="text-lg font-black text-white font-mono">${(congratsTx.amount * 1.0219).toFixed(2)} USDT</p>
+                <p className="text-lg font-black text-white font-mono">${(congratsTx.amount * 1.02).toFixed(2)} USDT</p>
               </div>
 
               <button
