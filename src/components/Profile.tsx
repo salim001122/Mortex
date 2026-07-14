@@ -21,9 +21,7 @@ import {
   Fingerprint,
   Copy,
   Check,
-  Smartphone,
-  Monitor,
-  Download
+  Info
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, VIPRank } from '../types';
@@ -66,8 +64,6 @@ export default function Profile({
   const [kycModalOpen, setKycModalOpen] = useState(false);
   const [twoFactorModalOpen, setTwoFactorModalOpen] = useState(false);
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
-  const [downloadModalOpen, setDownloadModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'android' | 'ios' | 'desktop'>('android');
 
   // KYC Inputs
   const [kycName, setKycName] = useState('');
@@ -188,109 +184,6 @@ export default function Profile({
     setPasswordModalOpen(false);
     setNewPassword('');
     setConfirmPassword('');
-  };
-
-  const handleDownloadLauncher = () => {
-    try {
-      const appUrl = window.location.origin || window.location.href;
-      
-      const launcherHtml = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="theme-color" content="#09090b">
-  <title>NGK Ecosystem</title>
-  <style>
-    body {
-      background-color: #09090b;
-      color: #ffffff;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      margin: 0;
-      text-align: center;
-      overflow: hidden;
-    }
-    .container {
-      max-width: 400px;
-      padding: 20px;
-    }
-    .logo-container {
-      margin-bottom: 24px;
-      position: relative;
-    }
-    .logo-text {
-      font-size: 32px;
-      font-weight: 900;
-      letter-spacing: 0.15em;
-      color: #10b981;
-      text-shadow: 0 0 15px rgba(16, 185, 129, 0.4);
-    }
-    .subtitle {
-      font-size: 11px;
-      color: #059669;
-      font-weight: bold;
-      letter-spacing: 0.2em;
-      text-transform: uppercase;
-      margin-top: 4px;
-    }
-    .status {
-      font-size: 13px;
-      color: #71717a;
-      margin-top: 32px;
-      font-weight: 500;
-    }
-    .loader {
-      border: 3px solid #18181b;
-      border-top: 3px solid #10b981;
-      border-radius: 50%;
-      width: 28px;
-      height: 28px;
-      animation: spin 0.8s linear infinite;
-      margin: 20px auto 0 auto;
-    }
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-  </style>
-  <script>
-    setTimeout(function() {
-      window.location.href = "${appUrl}";
-    }, 1200);
-  </script>
-</head>
-<body>
-  <div class="container">
-    <div class="logo-container">
-      <div class="logo-text">NGK</div>
-      <div class="subtitle">ECOSYSTEM NODES</div>
-    </div>
-    <div class="status">Connecting to Secure Node...</div>
-    <div class="loader"></div>
-  </div>
-</body>
-</html>`;
-
-      const blob = new Blob([launcherHtml], { type: 'text/html' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'NGK_Ecosystem.html';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      
-      onShowToast('NGK App Shortcut launcher downloaded! Open it to launch NGK instantly.', 'success');
-    } catch (err) {
-      console.error(err);
-      onShowToast('Failed to generate local launcher shortcut file.', 'error');
-    }
   };
 
   const kycStatusDisplay = {
@@ -513,29 +406,7 @@ export default function Profile({
             </div>
           </div>
 
-          {/* Download NGK App Shortcut Option */}
-          <div 
-            id="download-app-card-btn"
-            onClick={() => setDownloadModalOpen(true)}
-            className="p-4 flex items-center justify-between hover:bg-zinc-900/40 cursor-pointer transition duration-150"
-          >
-            <div className="flex items-center gap-3.5">
-              <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shadow-sm animate-pulse">
-                <Download size={15} />
-              </div>
-              <div className="space-y-0.5">
-                <h4 className="text-xs font-bold text-white uppercase tracking-wide font-mono">Download NGK App</h4>
-                <p className="text-[10px] text-zinc-500">Install web shortcut &amp; PWA for quick access</p>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-1.5">
-              <span className="text-[8px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/25 bg-emerald-500/10 text-emerald-400 uppercase font-mono tracking-wider">
-                Available
-              </span>
-              <ChevronRight size={13} className="text-zinc-600" />
-            </div>
-          </div>
+
         </div>
 
 
@@ -838,158 +709,7 @@ export default function Profile({
         )}
       </AnimatePresence>
 
-      {/* 4. Beautiful Futuristic App Installer & Shortcut Guide Modal */}
-      <AnimatePresence>
-        {downloadModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/85 backdrop-blur-xs overflow-y-auto">
-            <motion.div
-              initial={{ scale: 0.96, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.96, opacity: 0 }}
-              className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5.5 w-full max-w-sm shadow-2xl my-8 max-h-[92vh] overflow-y-auto font-sans text-left"
-            >
-              <div className="flex justify-between items-center mb-4 border-b border-zinc-800 pb-3">
-                <div>
-                  <h3 className="font-bold text-sm text-white font-mono flex items-center gap-2">
-                    <Download size={16} className="text-emerald-400" />
-                    NGK Ecosystem App
-                  </h3>
-                  <p className="text-[9px] text-emerald-400 font-mono uppercase font-bold mt-0.5">Instant Shortcut &amp; PWA Installer</p>
-                </div>
-                <button 
-                  onClick={() => setDownloadModalOpen(false)} 
-                  className="w-7 h-7 bg-zinc-950 hover:bg-zinc-800 rounded-lg text-zinc-400 flex items-center justify-center border border-zinc-850 transition text-xs font-bold font-mono"
-                >
-                  ✕
-                </button>
-              </div>
 
-              <div className="space-y-5">
-                {/* Section A: Direct Launcher download (Recommended) */}
-                <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-4 space-y-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-400 shrink-0">
-                      <Download size={14} />
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-black text-white uppercase tracking-wider font-mono">1. Download App Launcher</h4>
-                      <p className="text-[9px] text-zinc-400">Works instantly on all devices</p>
-                    </div>
-                  </div>
-
-                  <p className="text-[10px] text-zinc-500 leading-normal font-medium">
-                    Downloads an optimized offline-launcher shortcut file. Keep it in your local files or on your homescreen to launch NGK instantly in a secure fast window!
-                  </p>
-
-                  <button 
-                    onClick={handleDownloadLauncher}
-                    className="w-full bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-black py-2.5 rounded-lg text-[11px] uppercase tracking-wider transition font-mono flex items-center justify-center gap-1.5"
-                  >
-                    <Download size={13} />
-                    Download NGK Shortcut (.html)
-                  </button>
-                </div>
-
-                {/* Section B: Progressive Web App Homescreen Guide */}
-                <div className="space-y-3.5">
-                  <div className="flex items-center gap-2.5 px-1">
-                    <div className="w-8 h-8 rounded-lg bg-zinc-950 border border-zinc-850 flex items-center justify-center text-zinc-400 shrink-0">
-                      <Smartphone size={14} />
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-black text-white uppercase tracking-wider font-mono">2. Add Shortcut to Home Screen</h4>
-                      <p className="text-[9px] text-zinc-500">Run directly from your app drawer</p>
-                    </div>
-                  </div>
-
-                  {/* Device selectors tabs */}
-                  <div className="flex bg-zinc-950 p-1 rounded-lg border border-zinc-850 font-mono text-[9px] font-bold uppercase">
-                    <button 
-                      onClick={() => setActiveTab('android')}
-                      className={`flex-1 py-1.5 text-center rounded-md transition ${activeTab === 'android' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'text-zinc-500 hover:text-zinc-300'}`}
-                    >
-                      Android
-                    </button>
-                    <button 
-                      onClick={() => setActiveTab('ios')}
-                      className={`flex-1 py-1.5 text-center rounded-md transition ${activeTab === 'ios' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'text-zinc-500 hover:text-zinc-300'}`}
-                    >
-                      iPhone / iOS
-                    </button>
-                    <button 
-                      onClick={() => setActiveTab('desktop')}
-                      className={`flex-1 py-1.5 text-center rounded-md transition ${activeTab === 'desktop' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'text-zinc-500 hover:text-zinc-300'}`}
-                    >
-                      PC / Chrome
-                    </button>
-                  </div>
-
-                  {/* Guides Content */}
-                  <div className="bg-zinc-950/40 border border-zinc-850/60 rounded-xl p-3.5 space-y-2.5 font-mono text-[10px] text-zinc-400">
-                    {activeTab === 'android' && (
-                      <ul className="space-y-2">
-                        <li className="flex items-start gap-2">
-                          <span className="text-emerald-400 font-extrabold text-xs">①</span>
-                          <span>Open this website inside **Google Chrome** on your phone.</span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <span className="text-emerald-400 font-extrabold text-xs">②</span>
-                          <span>Tap the menu icon **(⋮)** in the top-right corner.</span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <span className="text-emerald-400 font-extrabold text-xs">③</span>
-                          <span>Select **"Add to Home screen"** or **"Install app"**.</span>
-                        </li>
-                      </ul>
-                    )}
-
-                    {activeTab === 'ios' && (
-                      <ul className="space-y-2">
-                        <li className="flex items-start gap-2">
-                          <span className="text-emerald-400 font-extrabold text-xs">①</span>
-                          <span>Open this website inside **Safari Browser** on your iPhone.</span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <span className="text-emerald-400 font-extrabold text-xs">②</span>
-                          <span>Tap the **Share button (⎋)** at the bottom menu.</span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <span className="text-emerald-400 font-extrabold text-xs">③</span>
-                          <span>Scroll down and tap **"Add to Home Screen"** ➕.</span>
-                        </li>
-                      </ul>
-                    )}
-
-                    {activeTab === 'desktop' && (
-                      <ul className="space-y-2">
-                        <li className="flex items-start gap-2">
-                          <span className="text-emerald-400 font-extrabold text-xs">①</span>
-                          <span>Use Google Chrome, Edge or Brave on your PC/Mac.</span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <span className="text-emerald-400 font-extrabold text-xs">②</span>
-                          <span>Click the **Install Icon (⊞)** located in the browser search bar.</span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <span className="text-emerald-400 font-extrabold text-xs">③</span>
-                          <span>Select **"Install"** to run NGK as a standalone desktop application.</span>
-                        </li>
-                      </ul>
-                    )}
-                  </div>
-                </div>
-
-                <div className="bg-zinc-950 border border-zinc-850 p-3 rounded-xl flex items-center gap-3">
-                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping shrink-0" />
-                  <p className="text-[9px] text-zinc-500 uppercase tracking-wide font-bold font-mono">
-                    Once installed, open NGK instantly from your homescreen anytime!
-                  </p>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </motion.div>
   );
 }
