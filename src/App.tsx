@@ -1332,7 +1332,7 @@ export default function App() {
 
       setDepositOpen(false);
       setDepositLoading(false);
-      showToast(`Deposit submitted! Go to Profile > Admin Portal to approve it.`, 'success');
+      showToast('Deposit Submitted! After blockchain confirmation, your deposit amount will be credited to your account.', 'success');
 
     } catch (err) {
       console.error(err);
@@ -1420,7 +1420,7 @@ export default function App() {
 
       setWithdrawOpen(false);
       setWithdrawLoading(false);
-      showToast(`Withdrawal requested! Go to Profile > Admin Portal to approve it.`, 'success');
+      showToast('Withdrawal Submitted! After blockchain network processing, your withdrawal will be completed.', 'success');
 
     } catch (err) {
       console.error(err);

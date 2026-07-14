@@ -371,83 +371,66 @@ export default function History({
               <div 
                 key={tx.id} 
                 onClick={() => setSelectedTx(tx)}
-                className="coding-card rounded-xl p-4 transition relative overflow-hidden cursor-pointer hover:bg-zinc-900/40 active:scale-[0.98] duration-200"
+                className="coding-card rounded-xl p-3 transition relative overflow-hidden cursor-pointer hover:bg-zinc-900/40 active:scale-[0.98] duration-200 flex items-center justify-between"
               >
-                <div className="flex justify-between items-start gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-lg border flex items-center justify-center ${iconBg}`}>
-                      {icon}
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-bold text-white uppercase tracking-wider">{tx.type}</h4>
-                      <p className="text-[10px] text-zinc-500 flex items-center gap-1.5 mt-1 font-mono">
-                        <Clock size={10} /> {formattedDate}
-                      </p>
-                    </div>
+                {/* Left Side: Icon & Details */}
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 ${iconBg}`}>
+                    {icon}
                   </div>
-
-                  {/* Status Badges */}
-                  <div className="flex items-center gap-1.5">
-                    {tx.status === TransactionStatus.Pending && (
-                      <>
-                        <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse" />
-                        <span className="text-[9px] font-bold text-yellow-400 uppercase tracking-wide font-mono">Pending</span>
-                      </>
-                    )}
-                    {tx.status === TransactionStatus.Success && (
-                      <>
-                        <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full" />
-                        <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-wide font-mono">Success</span>
-                      </>
-                    )}
-                    {tx.status === TransactionStatus.Failed && (
-                      <>
-                        <span className="w-1.5 h-1.5 bg-red-500 rounded-full" />
-                        <span className="text-[9px] font-bold text-red-500 uppercase tracking-wide font-mono">Failed</span>
-                      </>
-                    )}
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <h4 className="text-[11px] font-bold text-white uppercase tracking-wider truncate">
+                        {tx.type}
+                      </h4>
+                      {tx.traderName && (
+                        <span className="text-[8px] text-cyan-400 font-mono border border-cyan-500/20 px-1 rounded uppercase shrink-0">
+                          Copy
+                        </span>
+                      )}
+                      {tx.bonus && tx.bonus > 0 && (
+                        <span className="text-[8px] text-amber-400 font-mono border border-amber-500/20 px-1 rounded uppercase shrink-0">
+                          Bonus
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[9px] text-zinc-550 flex items-center gap-1 mt-0.5 font-mono">
+                      <Clock size={8} className="shrink-0 text-zinc-550" /> {formattedDate}
+                    </p>
                   </div>
                 </div>
 
-                {/* Amount details */}
-                <div className="mt-4 flex justify-between items-end border-t border-zinc-800/80 pt-3">
-                  <div>
-                    <div className="flex items-center gap-1.5">
-                      <svg className="w-4 h-4 inline-block align-middle shrink-0" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <circle cx="12" cy="12" r="10" fill="#26A17B" />
-                        <path d="M12.2 6.5c-3.2 0-5.8 1.1-5.8 2.5s2.6 2.5 5.8 2.5 5.8-1.1 5.8-2.5-2.6-2.5-5.8-2.5zm3.2 2.7h-2.1v4.8h-2.2v-4.8H9v-1.1h6.4v1.1z" fill="white" />
-                      </svg>
-                      <span className={`text-sm font-mono font-bold ${amtColor}`}>
-                        {amtPrefix}{tx.amount.toFixed(2)} USDT
-                      </span>
-                    </div>
-                    
-                    {/* Nested specifications details */}
-                    {tx.bonus && tx.bonus > 0 && (
-                      <p className="text-[10px] text-emerald-400 font-bold flex items-center gap-1 mt-1 uppercase font-mono">
-                        <Gift size={8} /> +{tx.bonus.toFixed(2)} USDT Bonus
-                      </p>
-                    )}
-                    {tx.profit && tx.profit > 0 && (
-                      <p className="text-[10px] text-emerald-400 font-bold flex items-center gap-1 mt-1 uppercase font-mono">
-                        <Coins size={8} /> +{tx.profit.toFixed(2)} USDT Profit Paid
-                      </p>
-                    )}
-                    {tx.network && (
-                      <p className="text-[10px] text-zinc-500 mt-1 font-mono">
-                        Network: {tx.network} {tx.address ? `· Address: ${tx.address.slice(0, 6)}...${tx.address.slice(-4)}` : ''}
-                      </p>
-                    )}
-                    {tx.traderName && (
-                      <p className="text-[10px] text-cyan-400 font-bold mt-1 uppercase font-mono">
-                        Trader: {tx.traderName}
-                      </p>
-                    )}
+                {/* Right Side: Amount & Status */}
+                <div className="text-right flex flex-col items-end shrink-0 pl-2">
+                  <div className="flex items-center gap-1">
+                    <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <circle cx="12" cy="12" r="10" fill="#26A17B" />
+                      <path d="M12.2 6.5c-3.2 0-5.8 1.1-5.8 2.5s2.6 2.5 5.8 2.5 5.8-1.1 5.8-2.5-2.6-2.5-5.8-2.5zm3.2 2.7h-2.1v4.8h-2.2v-4.8H9v-1.1h6.4v1.1z" fill="white" />
+                    </svg>
+                    <span className={`text-xs font-mono font-bold ${amtColor}`}>
+                      {amtPrefix}{tx.amount.toFixed(2)}
+                    </span>
                   </div>
                   
-                  <div className="text-right flex flex-col items-end">
-                    <span className="text-[9px] text-zinc-550 font-mono">#{(tx.id || '').slice(0, 8).toUpperCase()}</span>
-                    <span className="text-[8px] text-cyan-400 font-mono mt-1 opacity-70">Click for details</span>
+                  <div className="flex items-center gap-1 mt-0.5">
+                    {tx.status === TransactionStatus.Pending && (
+                      <span className="text-[8px] font-bold text-yellow-400 uppercase tracking-wide font-mono flex items-center gap-1">
+                        <span className="w-1 h-1 bg-yellow-400 rounded-full animate-pulse" />
+                        Pending
+                      </span>
+                    )}
+                    {tx.status === TransactionStatus.Success && (
+                      <span className="text-[8px] font-bold text-emerald-400 uppercase tracking-wide font-mono flex items-center gap-1">
+                        <span className="w-1 h-1 bg-emerald-400 rounded-full" />
+                        Success
+                      </span>
+                    )}
+                    {tx.status === TransactionStatus.Failed && (
+                      <span className="text-[8px] font-bold text-red-500 uppercase tracking-wide font-mono flex items-center gap-1">
+                        <span className="w-1 h-1 bg-red-500 rounded-full" />
+                        Failed
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
