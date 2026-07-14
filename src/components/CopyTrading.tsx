@@ -268,8 +268,9 @@ interface CopyTradingProps {
   traders: any[]; // Kept for backwards compatibility
   activeTrades: Transaction[];
   onStartCopyTrade: (traderName: string, amount: number, traderAvatar?: string, tradePair?: string) => void;
-  onReleaseTrade: (txId: string, totpCode: string) => boolean;
+  onReleaseTrade: (txId: string, totpCode: string) => boolean | Promise<boolean>;
   onInstantSettleTrade?: (txId: string) => void;
+  showToast?: (message: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
 }
 
 export default function CopyTrading({
@@ -278,8 +279,11 @@ export default function CopyTrading({
   activeTrades,
   onStartCopyTrade,
   onReleaseTrade,
-  onInstantSettleTrade
+  onInstantSettleTrade,
+  showToast
 }: CopyTradingProps) {
+  const showToastHelper = showToast || ((msg: string) => alert(msg));
+
   const [selectedCountryName, setSelectedCountryName] = useState<string>(() => {
     return localStorage.getItem('gtx_selected_country') || localStorage.getItem('futuregrotex_selected_country') || 'Uzbekistan';
   });
@@ -349,7 +353,7 @@ export default function CopyTrading({
       const s2 = 15 * 3600 + 0 * 60;  // 15:00 UTC
       const s3 = 15 * 3600 + 40 * 60; // 15:40 UTC
 
-      const activeWindow = 30 * 60; // 30 mins active window
+      const activeWindow = 60 * 60; // 1 hour active window
 
       if (currentUtcSeconds >= s1 && currentUtcSeconds < s1 + activeWindow) {
         setActiveSignalIndex(0);
@@ -431,6 +435,10 @@ export default function CopyTrading({
   };
 
   const handleOpenTraderModal = (trader: CountryTrader) => {
+    if (activeSignalIndex === null) {
+      showToastHelper("Copy trade blocked! Trading is only permitted during active signal hours. Please wait for the next signal.", "error");
+      return;
+    }
     setModalTrader(trader);
     setInvestmentAmt('100');
     setModalStep(1);
@@ -438,6 +446,11 @@ export default function CopyTrading({
   };
 
   const handleProceedToDeploymentSim = () => {
+    if (activeSignalIndex === null) {
+      showToastHelper("Copy trade blocked! Trading is only permitted during active signal hours. Please wait for the next signal.", "error");
+      setModalTrader(null);
+      return;
+    }
     const amt = parseFloat(investmentAmt);
     if (isNaN(amt) || amt < 30 || amt > user.mainBalance) return;
     
@@ -470,6 +483,11 @@ export default function CopyTrading({
 
   const handleFinalDeploy = () => {
     if (!modalTrader) return;
+    if (activeSignalIndex === null) {
+      showToastHelper("Copy trade blocked! Trading is only permitted during active signal hours. Please wait for the next signal.", "error");
+      setModalTrader(null);
+      return;
+    }
     const amt = parseFloat(investmentAmt);
     
     // Deploys the actual copy trade

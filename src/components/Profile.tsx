@@ -401,26 +401,7 @@ export default function Profile({
           </div>
         </div>
 
-        {/* Live Support Card */}
-        <div className="bg-zinc-900/30 border border-zinc-850/80 rounded-2xl overflow-hidden shadow-sm hover:bg-zinc-900/40 transition">
-          <div 
-            id="live-support-card-btn"
-            onClick={onShowSupport}
-            className="p-4 flex items-center justify-between cursor-pointer"
-          >
-            <div className="flex items-center gap-3.5">
-              <div className="w-9 h-9 rounded-xl bg-teal-500/10 border border-teal-500/20 flex items-center justify-center text-teal-400 shadow-sm">
-                <HelpCircle size={15} />
-              </div>
-              <div className="space-y-0.5">
-                <h4 className="text-xs font-bold text-white uppercase tracking-wide font-mono">Help Desk &amp; Chat</h4>
-                <p className="text-[10px] text-zinc-500">Access support agents and FAQ nodes</p>
-              </div>
-            </div>
-            
-            <ChevronRight size={13} className="text-zinc-600" />
-          </div>
-        </div>
+
 
         {/* Logout Action */}
         <button 

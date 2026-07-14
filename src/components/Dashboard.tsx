@@ -89,7 +89,7 @@ interface DashboardProps {
   onClaimBonus: () => void;
   activeTrades: Transaction[];
   activeStakeAmount: number;
-  onReleaseTrade: (txId: string, totpCode: string) => boolean;
+  onReleaseTrade: (txId: string, totpCode: string) => boolean | Promise<boolean>;
 }
 
 export default function Dashboard({
@@ -469,8 +469,14 @@ export default function Dashboard({
                                   alert("Please enter a 6-digit 2FA code.");
                                   return;
                                 }
-                                const success = onReleaseTrade(trade.id, code);
-                                if (success) {
+                                const res = onReleaseTrade(trade.id, code);
+                                if (res instanceof Promise) {
+                                  res.then(success => {
+                                    if (success) {
+                                      setTotpInputs(prev => ({ ...prev, [trade.id]: '' }));
+                                    }
+                                  });
+                                } else if (res) {
                                   setTotpInputs(prev => ({ ...prev, [trade.id]: '' }));
                                 }
                               }}

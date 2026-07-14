@@ -25,6 +25,8 @@ export interface User {
   uid: string;
   username: string;
   email: string;
+  phone?: string;
+  password?: string;
   mainBalance: number;
   profitBalance: number;
   totalVolume: number;
@@ -38,9 +40,11 @@ export interface User {
   lastBonusClaim: string | null; // ISO string
   referralCode: string;
   referrer: string | null;
+  invitedBy?: string;
   withdrawalPin: string;
   twoFactorEnabled: boolean;
   twoFactorSecret: string | null;
+  isSupportOnline?: boolean;
   kycStatus: 'not_submitted' | 'pending' | 'verified';
   kycData?: {
     fullName: string;

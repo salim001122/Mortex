@@ -1,6 +1,6 @@
 {
-  "name": "GTX",
-  "description": "GTX Investment Ecosystem & QASX Exchange model featuring five-stage quantitative trading, locks, and agent programs.",
+  "name": "NGK",
+  "description": "NGK Quantitative Trading and Secure Asset Exchange featuring automated agent programs, high-yield smart staking, and multi-signature withdrawal controls.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

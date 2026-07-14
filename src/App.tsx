@@ -22,7 +22,8 @@ import {
   Headphones,
   Globe,
   Mail,
-  Phone
+  Phone,
+  Shield
 } from 'lucide-react';
 
 import { 
@@ -48,44 +49,30 @@ import Referral from './components/Referral';
 import Profile from './components/Profile';
 import History from './components/History';
 import Support from './components/Support';
+import AdminPanel from './components/AdminPanel';
 
-// Seamlessly intercept localStorage to migrate from 'futuregrotex_' prefix to 'gtx_' prefix
-const originalGetItem = Storage.prototype.getItem;
-const originalSetItem = Storage.prototype.setItem;
-const originalRemoveItem = Storage.prototype.removeItem;
-
-Storage.prototype.getItem = function (key: string) {
-  if (key && key.includes('futuregrotex_')) {
-    const newKey = key.replace('futuregrotex_', 'gtx_');
-    const val = originalGetItem.call(this, newKey);
-    if (val !== null) return val;
-    const oldVal = originalGetItem.call(this, key);
-    if (oldVal !== null) {
-      originalSetItem.call(this, newKey, oldVal);
-    }
-    return oldVal;
-  }
-  return originalGetItem.call(this, key);
-};
-
-Storage.prototype.setItem = function (key: string, value: string) {
-  if (key && key.includes('futuregrotex_')) {
-    const newKey = key.replace('futuregrotex_', 'gtx_');
-    originalSetItem.call(this, newKey, value);
-  } else {
-    originalSetItem.call(this, key, value);
-  }
-};
-
-Storage.prototype.removeItem = function (key: string) {
-  if (key && key.includes('futuregrotex_')) {
-    const newKey = key.replace('futuregrotex_', 'gtx_');
-    originalRemoveItem.call(this, newKey);
-    originalRemoveItem.call(this, key);
-  } else {
-    originalRemoveItem.call(this, key);
-  }
-};
+// Firebase imports
+import { auth, db } from './firebase';
+import { 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  signOut,
+  onAuthStateChanged
+} from 'firebase/auth';
+import { 
+  doc, 
+  setDoc, 
+  getDoc, 
+  updateDoc, 
+  collection, 
+  addDoc, 
+  getDocs, 
+  query, 
+  where, 
+  orderBy, 
+  onSnapshot, 
+  increment
+} from 'firebase/firestore';
 
 // Seed Initial Elite Traders
 const INITIAL_TRADERS: Trader[] = [
@@ -109,6 +96,15 @@ export default function App() {
   // Screens & Navigation
   const [currentScreen, setCurrentScreen] = useState<string>('dashboard');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'warning' | 'info' } | null>(null);
+  
+  // NEW: NGK Animated Splash Screen State & Timer
+  const [showSplash, setShowSplash] = useState<boolean>(true);
+  useEffect(() => {
+    const splashTimer = setTimeout(() => {
+      setShowSplash(false);
+    }, 3200);
+    return () => clearTimeout(splashTimer);
+  }, []);
 
   // Auth Screen states
   const [isLoginMode, setIsLoginMode] = useState<boolean>(true);
@@ -120,13 +116,23 @@ export default function App() {
   const [authPin, setAuthPin] = useState<string>('');
   const [authRefCode, setAuthRefCode] = useState<string>('');
 
+  // Loading States to prevent double-clicks & accidental duplicates
+  const [authLoading, setAuthLoading] = useState<boolean>(false);
+  const [depositLoading, setDepositLoading] = useState<boolean>(false);
+  const [withdrawLoading, setWithdrawLoading] = useState<boolean>(false);
+
   // Core App states
+  const [activeUid, setActiveUid] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [activeStake, setActiveStake] = useState<Stake | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [newChatMessage, setNewChatMessage] = useState<string>('');
   const [unreadChatCount, setUnreadChatCount] = useState<number>(3);
+
+  // Admin secure gate states
+  const [adminGateEmail, setAdminGateEmail] = useState<string>('admin@gmail.com');
+  const [adminGatePassword, setAdminGatePassword] = useState<string>('');
 
   // Modals state
   const [depositOpen, setDepositOpen] = useState<boolean>(false);
@@ -151,213 +157,354 @@ export default function App() {
     setTimeout(() => setToast(null), 3500);
   };
 
-  // 2. Load Init Datasets from LocalStorage
+  // NEW: Password Strength Analyser
+  const getPasswordStrength = (pass: string) => {
+    if (!pass) return { score: 0, text: 'Empty', color: 'text-zinc-650', barColor: 'bg-zinc-850', width: 'w-0' };
+    let score = 0;
+    if (pass.length >= 6) score += 1;
+    if (pass.length >= 8) score += 1;
+    if (/[A-Z]/.test(pass)) score += 1;
+    if (/[0-9]/.test(pass)) score += 1;
+    if (/[^A-Za-z0-9]/.test(pass)) score += 1;
+
+    if (score <= 2) {
+      return { score, text: 'Weak (Should have numbers & upper case)', color: 'text-rose-500', barColor: 'bg-rose-500', width: 'w-1/3' };
+    } else if (score <= 4) {
+      return { score, text: 'Medium Strength', color: 'text-amber-500', barColor: 'bg-amber-500', width: 'w-2/3' };
+    } else {
+      return { score, text: 'Strong Password', color: 'text-emerald-400', barColor: 'bg-emerald-400', width: 'w-full' };
+    }
+  };
+
+  // NEW: Secure Admin Gate Submit Handler
+  const handleAdminGateSubmit = async () => {
+    if (adminGateEmail.trim() !== 'admin@gmail.com' || adminGatePassword !== 'admin3737') {
+      showToast('Decryption failed. Unauthorized security key sequence.', 'error');
+      return;
+    }
+
+    try {
+      const adminUid = 'NGK-ADMIN-NODE';
+      const adminDocRef = doc(db, 'users', adminUid);
+      const adminSnap = await getDoc(adminDocRef);
+      if (!adminSnap.exists()) {
+        await setDoc(adminDocRef, {
+          uid: adminUid,
+          username: 'NGK Admin Officer',
+          email: 'admin@gmail.com',
+          password: 'admin3737',
+          phone: '+1 800-NGK-NODE',
+          mainBalance: 999999.99,
+          profitBalance: 999999.99,
+          totalCommission: 0,
+          teamVolume: 0,
+          invitedBy: '',
+          referralCode: 'NGK-ADMIN-NODE',
+          kycStatus: 'Verified',
+          google2fa: true,
+          twoFaSecret: 'NGKSECRET',
+          avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop&crop=face',
+          totalVolume: 999999,
+          streakDays: 365,
+          lastBonusClaim: new Date().toISOString()
+        });
+      }
+      setActiveUid(adminUid);
+      localStorage.setItem('ngk_fallback_uid', adminUid);
+      showToast('Administrative Console Decrypted successfully.', 'success');
+      setAdminGatePassword('');
+    } catch (err) {
+      console.error(err);
+      showToast('System validation error.', 'error');
+    }
+  };
+
+  // NEW: URL Router and Security Guardian
   useEffect(() => {
+    const handleUrlRouting = () => {
+      const path = window.location.pathname;
+      const hash = window.location.hash;
+      const search = window.location.search;
+
+      const isPanel = path.includes('/panel') || hash.includes('panel') || search.includes('page=panel');
+      const isSupport = path.includes('/support') || hash.includes('support') || search.includes('page=support');
+
+      if (isPanel) {
+        if (currentScreen !== 'admin') {
+          setCurrentScreen('admin');
+        }
+      } else if (isSupport) {
+        if (currentScreen !== 'support') {
+          setCurrentScreen('support');
+        }
+      } else {
+        // Enforce that admin and support are inaccessible unless the url contains the secret additions
+        if (currentScreen === 'admin' || currentScreen === 'support') {
+          setCurrentScreen('dashboard');
+        }
+      }
+    };
+
+    // Run on boot
+    handleUrlRouting();
+
+    // Check on standard state events and intervals to be completely bulletproof
+    const interval = setInterval(handleUrlRouting, 400);
+    window.addEventListener('popstate', handleUrlRouting);
+    window.addEventListener('hashchange', handleUrlRouting);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('popstate', handleUrlRouting);
+      window.removeEventListener('hashchange', handleUrlRouting);
+    };
+  }, [currentScreen]);
+
+  // 2. Synchronize URL, Chats, and Authentication status on boot
+  useEffect(() => {
+    // A. Parse referral code from invitation URL query params
     const params = new URLSearchParams(window.location.search);
     const invite = params.get('ref') || params.get('invite');
     if (invite) {
       setAuthRefCode(invite.toUpperCase());
     }
 
-    const chatFromLocal = localStorage.getItem('futuregrotex_chats');
-    if (chatFromLocal) {
-      setChatMessages(JSON.parse(chatFromLocal));
-    } else {
-      localStorage.setItem('futuregrotex_chats', JSON.stringify(SEED_CHAT_MESSAGES));
-      setChatMessages(SEED_CHAT_MESSAGES);
-    }
-
-    const currentSession = localStorage.getItem('futuregrotex_current_user');
-    if (currentSession) {
-      const userObj = JSON.parse(currentSession) as User;
-      if (!userObj.avatarUrl) {
-        const portraits = [
-          'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop&crop=face',
-          'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face',
-          'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&h=150&fit=crop&crop=face',
-          'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&h=150&fit=crop&crop=face',
-          'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&h=150&fit=crop&crop=face',
-          'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&h=150&fit=crop&crop=face',
-          'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&h=150&fit=crop&crop=face',
-          'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=150&h=150&fit=crop&crop=face',
-          'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150&h=150&fit=crop&crop=face',
-          'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&h=150&fit=crop&crop=face',
-          'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop&crop=face',
-          'https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?w=150&h=150&fit=crop&crop=face'
-        ];
-        const seed = userObj.email || userObj.username || userObj.uid || '';
-        let sum = 0;
-        for (let i = 0; i < seed.length; i++) sum += seed.charCodeAt(i);
-        userObj.avatarUrl = portraits[sum % portraits.length];
+    // B. Real-time community chats listener
+    const chatsRef = collection(db, 'chats');
+    const qChats = query(chatsRef, orderBy('timestamp', 'asc'));
+    const unsubscribeChats = onSnapshot(qChats, async (snapshot) => {
+      if (!snapshot.empty) {
+        const msgs: ChatMessage[] = [];
+        snapshot.forEach((doc) => {
+          msgs.push({ id: doc.id, ...doc.data() } as ChatMessage);
+        });
+        setChatMessages(msgs);
+      } else {
+        // If chat is empty on first boot, write high-quality initial seed messages to Firestore
+        try {
+          for (const msg of SEED_CHAT_MESSAGES) {
+            await addDoc(chatsRef, {
+              userId: msg.userId,
+              username: msg.username,
+              userEmail: msg.userEmail,
+              message: msg.message,
+              timestamp: msg.timestamp
+            });
+          }
+        } catch (err) {
+          console.error('Error seeding chat messages:', err);
+        }
       }
-      setCurrentUser(userObj);
-      loadUserRelatedData(userObj.uid);
-    }
+    });
+
+    // C. Real-time Firebase Authentication state observer with fallback validation
+    const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        setActiveUid(firebaseUser.uid);
+      } else {
+        const fallbackUid = localStorage.getItem('ngk_fallback_uid');
+        if (fallbackUid) {
+          setActiveUid(fallbackUid);
+        } else {
+          setActiveUid(null);
+        }
+      }
+    });
+
+    return () => {
+      unsubscribeChats();
+      unsubscribeAuth();
+    };
   }, []);
 
-  // Helper to sync user data across state and storage
-  const syncUser = (updatedUser: User) => {
-    setCurrentUser(updatedUser);
-    localStorage.setItem('futuregrotex_current_user', JSON.stringify(updatedUser));
-    
-    const usersListStr = localStorage.getItem('futuregrotex_users') || '[]';
-    const usersList = JSON.parse(usersListStr) as User[];
-    const idx = usersList.findIndex(u => u.uid === updatedUser.uid);
-    if (idx !== -1) {
-      usersList[idx] = updatedUser;
-    } else {
-      usersList.push(updatedUser);
+  // 2.5 Real-time Firestore synchronizer for user metadata and ledger updates
+  useEffect(() => {
+    if (!activeUid) {
+      setCurrentUser(null);
+      setTransactions([]);
+      setActiveStake(null);
+      return;
     }
-    localStorage.setItem('futuregrotex_users', JSON.stringify(usersList));
-  };
 
-  const loadUserRelatedData = (uid: string) => {
-    const txsStr = localStorage.getItem('futuregrotex_transactions') || '[]';
-    const txsList = JSON.parse(txsStr) as Transaction[];
-    const userTxs = txsList.filter(t => t.userId === uid);
-    setTransactions(userTxs);
+    const uid = activeUid;
+    const userRef = doc(db, 'users', uid);
 
-    const stakesStr = localStorage.getItem('futuregrotex_stakes') || '[]';
-    const stakesList = JSON.parse(stakesStr) as Stake[];
-    const activeUserStake = stakesList.find(s => s.userId === uid && s.status === 'Active') || null;
-    setActiveStake(activeUserStake);
-  };
+    // Listen to User document real-time
+    const unsubUser = onSnapshot(userRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const userData = docSnap.data() as User;
+        // Pre-assign avatar images dynamically from stable high-contrast presets if missing
+        if (!userData.avatarUrl) {
+          const portraits = [
+            'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop&crop=face',
+            'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face',
+            'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&h=150&fit=crop&crop=face',
+            'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&h=150&fit=crop&crop=face',
+            'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&h=150&fit=crop&crop=face'
+          ];
+          const seed = userData.email || userData.username || uid;
+          let sum = 0;
+          for (let i = 0; i < seed.length; i++) sum += seed.charCodeAt(i);
+          userData.avatarUrl = portraits[sum % portraits.length];
+        }
+        setCurrentUser(userData);
+      }
+    });
+
+    // Listen to User's subcollection `/transactions` inside user document
+    const txsQuery = query(
+      collection(db, 'users', uid, 'transactions'),
+      orderBy('timestamp', 'desc')
+    );
+    const unsubTxs = onSnapshot(txsQuery, (snap) => {
+      const loadedTxs: Transaction[] = [];
+      snap.forEach((txDoc) => {
+        loadedTxs.push({ id: txDoc.id, ...txDoc.data() } as Transaction);
+      });
+      setTransactions(loadedTxs);
+    });
+
+    // Listen to User's active stakes
+    const stakesQuery = query(
+      collection(db, 'users', uid, 'stakes'),
+      where('status', '==', 'Active')
+    );
+    const unsubStakes = onSnapshot(stakesQuery, (snap) => {
+      if (!snap.empty) {
+        const activeOne = { id: snap.docs[0].id, ...snap.docs[0].data() } as Stake;
+        setActiveStake(activeOne);
+      } else {
+        setActiveStake(null);
+      }
+    });
+
+    return () => {
+      unsubUser();
+      unsubTxs();
+      unsubStakes();
+    };
+  }, [activeUid]);
 
   // 3. Real-time intervals check for Copy Trades expiration and Staking Yield accumulation
   useEffect(() => {
-    const timer = setInterval(() => {
-      if (!currentUser) return;
+    if (!currentUser) return;
 
+    const timer = setInterval(async () => {
       const nowStr = new Date().toISOString();
-      const txsStr = localStorage.getItem('futuregrotex_transactions') || '[]';
-      const allTxs = JSON.parse(txsStr) as Transaction[];
 
-      let updated = false;
-      const updatedTxs = allTxs.map(tx => {
-        if (tx.userId === currentUser.uid && tx.type === TransactionType.CopyTrade && tx.status === TransactionStatus.Pending) {
+      try {
+        // Query pending copy trades
+        const txsRef = collection(db, 'users', currentUser.uid, 'transactions');
+        const qPending = query(
+          txsRef,
+          where('type', '==', TransactionType.CopyTrade),
+          where('status', '==', TransactionStatus.Pending)
+        );
+        const pendingSnap = await getDocs(qPending);
+
+        for (const txDoc of pendingSnap.docs) {
+          const tx = { id: txDoc.id, ...txDoc.data() } as Transaction;
           if (tx.endTime && tx.endTime <= nowStr) {
-            updated = true;
             const profit = tx.amount * 0.0219;
             const totalReturn = tx.amount + profit;
 
             if (tx.requiresApproval) {
               // 2nd daily trade gets placed on hold
-              showToast(`VIP Daily Limit Trade finished! Placed on Security HOLD for Audit.`, 'warning');
-              return {
-                ...tx,
+              await updateDoc(doc(db, 'users', currentUser.uid, 'transactions', tx.id), {
                 status: TransactionStatus.Hold,
                 profit,
                 totalReturn
-              };
+              });
+              showToast(`VIP Daily Limit Trade finished! Placed on Security HOLD for Audit.`, 'warning');
             } else {
-              const currentSession = localStorage.getItem('futuregrotex_current_user');
-              if (currentSession) {
-                const u = JSON.parse(currentSession) as User;
-                u.mainBalance += totalReturn;
-                u.profitBalance += profit;
-                syncUser(u);
-              }
-
-              showToast(`Copy trade with ${tx.traderName} complete! +$${profit.toFixed(2)} USDT profits added.`, 'success');
-              return {
-                ...tx,
+              await updateDoc(doc(db, 'users', currentUser.uid, 'transactions', tx.id), {
                 status: TransactionStatus.Success,
                 profit,
                 totalReturn
-              };
+              });
+
+              await updateDoc(doc(db, 'users', currentUser.uid), {
+                mainBalance: increment(totalReturn),
+                profitBalance: increment(profit)
+              });
+
+              showToast(`Copy trade with ${tx.traderName} complete! +$${profit.toFixed(2)} USDT profits added.`, 'success');
             }
           }
         }
-        return tx;
-      });
 
-      if (updated) {
-        localStorage.setItem('futuregrotex_transactions', JSON.stringify(updatedTxs));
-        setTransactions(updatedTxs.filter(t => t.userId === currentUser.uid));
-      }
+        // Check Staking yields
+        const stakesRef = collection(db, 'users', currentUser.uid, 'stakes');
+        const qStakes = query(stakesRef, where('status', '==', 'Active'));
+        const stakesSnap = await getDocs(qStakes);
 
-      // Check Staking yields
-      const stakesStr = localStorage.getItem('futuregrotex_stakes') || '[]';
-      const allStakes = JSON.parse(stakesStr) as Stake[];
-      let stakeUpdated = false;
-
-      const updatedStakes = allStakes.map(st => {
-        if (st.userId === currentUser.uid && st.status === 'Active') {
+        for (const stakeDoc of stakesSnap.docs) {
+          const st = { id: stakeDoc.id, ...stakeDoc.data() } as Stake;
           const startMs = new Date(st.startDate).getTime();
           const endMs = new Date(st.endDate).getTime();
-          const nowMs = new Date().getTime();
+          const nowMs = Date.now();
 
           if (nowMs >= endMs) {
-            stakeUpdated = true;
-            const currentSession = localStorage.getItem('futuregrotex_current_user');
-            if (currentSession) {
-              const u = JSON.parse(currentSession) as User;
-              u.mainBalance += st.amount;
-              u.totalStaked = Math.max(0, u.totalStaked - st.amount);
-              syncUser(u);
-            }
+            // Stake complete
+            await updateDoc(doc(db, 'users', currentUser.uid, 'stakes', st.id), {
+              status: 'Completed'
+            });
+
+            await updateDoc(doc(db, 'users', currentUser.uid), {
+              mainBalance: increment(st.amount),
+              totalStaked: increment(-st.amount)
+            });
+
             showToast(`Staking completed! Staked $${st.amount.toFixed(2)} USDT returned to balance.`, 'success');
-            return {
-              ...st,
-              status: 'Completed' as const
-            };
-          }
+          } else {
+            // Check daily yield payout (simulated every 1 minute)
+            const lastClaimMs = new Date(st.lastClaimed).getTime();
+            const elapsedSecs = (nowMs - lastClaimMs) / 1000;
 
-          const lastClaimMs = new Date(st.lastClaimed).getTime();
-          const elapsedSecs = (nowMs - lastClaimMs) / 1000;
+            if (elapsedSecs >= 60) {
+              const dailyYield = st.amount * 0.036;
 
-          if (elapsedSecs >= 60) { // Every 1 minute in demo compiles 1 day of 3.6% ROI!
-            stakeUpdated = true;
-            const dailyYield = st.amount * 0.036;
+              // Update stake last claimed
+              await updateDoc(doc(db, 'users', currentUser.uid, 'stakes', st.id), {
+                lastClaimed: new Date().toISOString(),
+                totalClaimed: increment(dailyYield)
+              });
 
-            const currentSession = localStorage.getItem('futuregrotex_current_user');
-            if (currentSession) {
-              const u = JSON.parse(currentSession) as User;
-              u.profitBalance += dailyYield;
-              syncUser(u);
+              // Add a yield bonus transaction
+              const txId = 'ST-ROI-' + Math.random().toString(36).substring(2, 9).toUpperCase();
+              const newTx: Transaction = {
+                id: txId,
+                userId: currentUser.uid,
+                type: TransactionType.Bonus,
+                amount: dailyYield,
+                status: TransactionStatus.Success,
+                timestamp: new Date().toISOString(),
+                traderName: 'AI Yield'
+              };
+
+              await setDoc(doc(db, 'users', currentUser.uid, 'transactions', txId), newTx);
+
+              // Update user profit balance
+              await updateDoc(doc(db, 'users', currentUser.uid), {
+                profitBalance: increment(dailyYield)
+              });
+
+              showToast(`Staking profit unlocked! +$${dailyYield.toFixed(2)} USDT added to profits.`, 'success');
             }
-
-            showToast(`Staking profit unlocked! +$${dailyYield.toFixed(2)} USDT added to profits.`, 'success');
-
-            const newTx: Transaction = {
-              id: 'ST-ROI-' + Math.random().toString(36).substring(2, 9).toUpperCase(),
-              userId: currentUser.uid,
-              type: TransactionType.Bonus,
-              amount: dailyYield,
-              status: TransactionStatus.Success,
-              timestamp: new Date().toISOString(),
-              traderName: 'AI Yield'
-            };
-
-            const txs = JSON.parse(localStorage.getItem('futuregrotex_transactions') || '[]') as Transaction[];
-            txs.push(newTx);
-            localStorage.setItem('futuregrotex_transactions', JSON.stringify(txs));
-            setTransactions(txs.filter(t => t.userId === currentUser.uid));
-
-            return {
-              ...st,
-              lastClaimed: new Date().toISOString(),
-              totalClaimed: st.totalClaimed + dailyYield
-            };
           }
         }
-        return st;
-      });
-
-      if (stakeUpdated) {
-        localStorage.setItem('futuregrotex_stakes', JSON.stringify(updatedStakes));
-        const activeOne = updatedStakes.find(s => s.userId === currentUser.uid && s.status === 'Active') || null;
-        setActiveStake(activeOne);
+      } catch (err) {
+        console.error('Simulation check error:', err);
       }
 
-    }, 1000);
+    }, 3000); // Checked every 3 seconds for fast feedback
 
     return () => clearInterval(timer);
   }, [currentUser]);
 
-  // Simulated chats interval
+  // Simulated chats interval to generate lively discussions inside the Community Chat window
   useEffect(() => {
-    const chatTicker = setInterval(() => {
+    const chatTicker = setInterval(async () => {
       if (!currentUser || currentScreen !== 'community') return;
 
       const mockTraders = ['Express Trader', 'CryptoWhale', 'Satoshi_AI', 'Alpha Signals', 'ProfitPulse', 'WhaleWatcher'];
@@ -373,305 +520,451 @@ export default function App() {
       const rTrader = mockTraders[Math.floor(Math.random() * mockTraders.length)];
       const rTalk = mockTalks[Math.floor(Math.random() * mockTalks.length)];
 
-      const incomingMsg: ChatMessage = {
-        id: 'c-' + Date.now(),
-        userId: 'm-' + Math.random().toString(36).substring(2, 5),
-        username: rTrader,
-        userEmail: `${rTrader.toLowerCase().replace(' ', '')}@gtx.com`,
-        message: rTalk,
-        timestamp: new Date().toISOString()
-      };
+      try {
+        await addDoc(collection(db, 'chats'), {
+          userId: 'm-' + Math.random().toString(36).substring(2, 5),
+          username: rTrader,
+          userEmail: `${rTrader.toLowerCase().replace(' ', '')}@gtx.com`,
+          message: rTalk,
+          timestamp: new Date().toISOString()
+        });
+      } catch (err) {
+        console.error(err);
+      }
 
-      setChatMessages(prev => {
-        const next = [...prev, incomingMsg];
-        localStorage.setItem('futuregrotex_chats', JSON.stringify(next));
-        return next;
-      });
-
-    }, 12000);
+    }, 24000); // Periodically post chats
 
     return () => clearInterval(chatTicker);
   }, [currentUser, currentScreen]);
 
   // 4. Handle Registration & Authentications
-  const handleSignUp = () => {
-    if (!authUsername || !authEmail || !authPassword || !authPin) {
-      showToast('Please fill in all details to sign up.', 'error');
+  const handleSignUp = async () => {
+    if (!authEmail || !authPassword || !authUsername) {
+      showToast('Please fill out all required fields.', 'error');
       return;
     }
+
     if (authPassword.length < 6) {
-      showToast('Password must be at least 6 characters long.', 'error');
-      return;
-    }
-    if (!/^\d{6}$/.test(authPin)) {
-      showToast('Withdrawal PIN must be exactly 6 numbers.', 'error');
+      showToast('Password must be at least 6 characters.', 'error');
       return;
     }
 
-    const usersListStr = localStorage.getItem('futuregrotex_users') || '[]';
-    const usersList = JSON.parse(usersListStr) as User[];
-
-    const exists = usersList.some(u => u.email.toLowerCase() === authEmail.toLowerCase());
-    if (exists) {
-      showToast('This email is already registered.', 'error');
+    if (authPin.length !== 6) {
+      showToast('Withdrawal PIN must be exactly 6 digits.', 'error');
       return;
     }
 
-    let referrerUid: string | null = null;
-    if (authRefCode) {
-      const matchRef = usersList.find(u => u.referralCode.toUpperCase() === authRefCode.toUpperCase());
-      if (matchRef) {
-        referrerUid = matchRef.uid;
-        matchRef.teamCount += 1;
-        const idx = usersList.findIndex(u => u.uid === matchRef.uid);
-        if (idx !== -1) {
-          usersList[idx] = matchRef;
+    if (authEmail.trim().toLowerCase() === 'admin@gmail.com') {
+      showToast('This email address is reserved for administrative services.', 'error');
+      return;
+    }
+
+    setAuthLoading(true);
+
+    try {
+      // 1. Create firebase auth user with Custom Database fallback for robustness
+      let uid = '';
+      try {
+        const userCredential = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
+        uid = userCredential.user.uid;
+      } catch (authErr: any) {
+        console.warn("Firebase Auth failed, falling back to custom Firestore Account system:", authErr);
+        
+        // Verify email uniqueness in Firestore
+        const qEmail = query(collection(db, 'users'), where('email', '==', authEmail));
+        const emailSnap = await getDocs(qEmail);
+        if (!emailSnap.empty) {
+          throw { code: 'auth/email-already-in-use', message: 'Email is already registered.' };
         }
-        localStorage.setItem('futuregrotex_users', JSON.stringify(usersList));
-      } else {
-        showToast('Invite code not found. Continuing sign up anyway.', 'warning');
+        
+        uid = 'NGK-USR-' + Math.random().toString(36).substring(2, 9).toUpperCase();
+        localStorage.setItem('ngk_fallback_uid', uid);
+      }
+
+      // 2. Generate referral code
+      const generatedRefCode = 'NGK-' + Math.random().toString(36).substring(2, 7).toUpperCase();
+
+      const portraits = [
+        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop&crop=face',
+        'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face',
+        'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&h=150&fit=crop&crop=face',
+        'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&h=150&fit=crop&crop=face',
+        'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&h=150&fit=crop&crop=face'
+      ];
+      const assignedAvatar = portraits[Math.floor(Math.random() * portraits.length)];
+
+      // 3. Setup initial document
+      const initialUser: User = {
+        uid,
+        username: authUsername,
+        email: authEmail,
+        phone: authMethod === 'tel' ? authEmail : '',
+        password: authPassword, // Saved for recovery/profile viewing
+        withdrawalPin: authPin,
+        referrer: authRefCode || '',
+        invitedBy: authRefCode || '',
+        referralCode: generatedRefCode,
+        mainBalance: 10.0, // 10 USDT welcome gift!
+        profitBalance: 0.0,
+        totalStaked: 0.0,
+        totalCommission: 0.0,
+        totalVolume: 0.0,
+        teamVolume: 0.0,
+        teamProfit: 0.0,
+        teamCount: 0,
+        loginStreak: 1,
+        lastBonusClaim: null,
+        copyTradeResetTime: null,
+        copyTradeCount: 0,
+        tier: VIPRank.Silver,
+        isSupportOnline: true,
+        kycStatus: 'not_submitted',
+        twoFactorEnabled: false,
+        twoFactorSecret: '',
+        createdAt: new Date().toISOString(),
+        avatarUrl: assignedAvatar
+      };
+
+      // Create document in Firestore
+      await setDoc(doc(db, 'users', uid), initialUser);
+
+      // Add a Welcome Gift transaction inside the user's transactions subcollection
+      const giftTxId = 'NGK-GIFT-' + Math.random().toString(36).substring(2, 9).toUpperCase();
+      const giftTx: Transaction = {
+        id: giftTxId,
+        userId: uid,
+        type: TransactionType.Bonus,
+        amount: 10.0,
+        status: TransactionStatus.Success,
+        timestamp: new Date().toISOString(),
+        traderName: 'Welcome Gift'
+      };
+
+      await setDoc(doc(db, 'users', uid, 'transactions', giftTxId), giftTx);
+
+      // Handle inviter relationships
+      if (authRefCode) {
+        const q = query(collection(db, 'users'), where('referralCode', '==', authRefCode));
+        const querySnapshot = await getDocs(q);
+        if (!querySnapshot.empty) {
+          const parentDoc = querySnapshot.docs[0];
+          const parentUid = parentDoc.id;
+
+          // Increment parent's teamCount in Firestore
+          await updateDoc(doc(db, 'users', parentUid), {
+            teamCount: increment(1)
+          });
+
+          // Add child metadata to parent's `/team` and `/refers` subcollections
+          const refMetaId = 'NGK-REF-META-' + Math.random().toString(36).substring(2, 9).toUpperCase();
+          const teamMember = {
+            id: refMetaId,
+            name: authUsername,
+            date: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
+            profit: '0.00 USDT',
+            active: true,
+            level: 1,
+            timestamp: new Date().toISOString()
+          };
+
+          await setDoc(doc(db, 'users', parentUid, 'team', refMetaId), teamMember);
+          await setDoc(doc(db, 'users', parentUid, 'refers', refMetaId), teamMember);
+        }
+      }
+
+      // Trigger active Uid synchronization directly for fallback flow
+      setActiveUid(uid);
+
+      showToast('Registration successful! Placed $10.00 USDT welcome bonus!', 'success');
+      setAuthEmail('');
+      setAuthUsername('');
+      setAuthPassword('');
+      setAuthPin('');
+      setAuthRefCode('');
+
+    } catch (err: any) {
+      console.error(err);
+      let errMsg = 'Registration failed.';
+      if (err.code === 'auth/email-already-in-use') {
+        errMsg = 'Email is already registered.';
+      } else if (err.code === 'auth/invalid-email') {
+        errMsg = 'Invalid email address format.';
+      } else if (err.code === 'auth/weak-password') {
+        errMsg = 'Password is too weak.';
+      }
+      showToast(errMsg, 'error');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleSignIn = async () => {
+    if (!authEmail || !authPassword) {
+      showToast('Please enter your email and password.', 'error');
+      return;
+    }
+
+    setAuthLoading(true);
+
+    // Override for admin node account
+    if (authEmail.trim().toLowerCase() === 'admin@gmail.com') {
+      if (authPassword !== 'admin3737') {
+        showToast('Invalid security password for administrative node.', 'error');
+        setAuthLoading(false);
+        return;
+      }
+      try {
+        const adminUid = 'NGK-ADMIN-NODE';
+        const adminDocRef = doc(db, 'users', adminUid);
+        const adminSnap = await getDoc(adminDocRef);
+        if (!adminSnap.exists()) {
+          await setDoc(adminDocRef, {
+            uid: adminUid,
+            username: 'NGK Admin Officer',
+            email: 'admin@gmail.com',
+            password: 'admin3737',
+            phone: '+1 800-NGK-NODE',
+            mainBalance: 999999.99,
+            profitBalance: 999999.99,
+            totalCommission: 0,
+            teamVolume: 0,
+            invitedBy: '',
+            referralCode: 'NGK-ADMIN-NODE',
+            kycStatus: 'Verified',
+            google2fa: true,
+            twoFaSecret: 'NGKSECRET',
+            avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop&crop=face',
+            totalVolume: 999999,
+            streakDays: 365,
+            lastBonusClaim: new Date().toISOString()
+          });
+        }
+        setActiveUid(adminUid);
+        localStorage.setItem('ngk_fallback_uid', adminUid);
+        showToast('Administrative Console Decrypted successfully.', 'success');
+        setAuthEmail('');
+        setAuthPassword('');
+        setAuthLoading(false);
+        return;
+      } catch (err) {
+        console.error(err);
+        showToast('Error initializing admin node.', 'error');
+        setAuthLoading(false);
+        return;
       }
     }
 
-    const refCodeGenerated = 'FG' + Math.random().toString(36).substring(2, 8).toUpperCase();
+    try {
+      let uid = '';
+      try {
+        const userCredential = await signInWithEmailAndPassword(auth, authEmail, authPassword);
+        uid = userCredential.user.uid;
+      } catch (authErr: any) {
+        console.warn("Firebase Auth login failed, checking custom Firestore database records:", authErr);
+        
+        // Search for user by email in Firestore
+        const qEmail = query(collection(db, 'users'), where('email', '==', authEmail));
+        const emailSnap = await getDocs(qEmail);
+        if (emailSnap.empty) {
+          throw { code: 'auth/user-not-found', message: 'Invalid email address or password.' };
+        }
+        
+        const userDoc = emailSnap.docs[0];
+        const userData = userDoc.data();
+        if (userData.password !== authPassword) {
+          throw { code: 'auth/wrong-password', message: 'Invalid email address or password.' };
+        }
+        
+        uid = userDoc.id;
+        localStorage.setItem('ngk_fallback_uid', uid);
+      }
 
-    const portraits = [
-      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop&crop=face',
-      'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face',
-      'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&h=150&fit=crop&crop=face',
-      'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&h=150&fit=crop&crop=face',
-      'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&h=150&fit=crop&crop=face',
-      'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&h=150&fit=crop&crop=face',
-      'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&h=150&fit=crop&crop=face',
-      'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=150&h=150&fit=crop&crop=face',
-      'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150&h=150&fit=crop&crop=face',
-      'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&h=150&fit=crop&crop=face',
-      'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop&crop=face',
-      'https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?w=150&h=150&fit=crop&crop=face'
-    ];
-    const seed = authEmail || authUsername || 'UID-' + Math.random();
-    let sum = 0;
-    for (let i = 0; i < seed.length; i++) sum += seed.charCodeAt(i);
-    const assignedAvatar = portraits[sum % portraits.length];
+      // Commit to state immediately to log the user in
+      setActiveUid(uid);
 
-    const newUser: User = {
-      uid: 'UID-' + Math.random().toString(36).substring(2, 9).toUpperCase(),
-      username: authUsername,
-      email: authEmail,
-      mainBalance: 10, // Welcome gift of 10 USDT!
-      profitBalance: 0,
-      totalVolume: 0,
-      totalStaked: 0,
-      teamVolume: 0,
-      teamProfit: 0,
-      teamCount: 0,
-      totalCommission: 0,
-      tier: VIPRank.Bronze,
-      loginStreak: 1,
-      lastBonusClaim: new Date().toISOString(),
-      referralCode: refCodeGenerated,
-      referrer: referrerUid,
-      withdrawalPin: authPin,
-      twoFactorEnabled: false,
-      twoFactorSecret: null,
-      kycStatus: 'not_submitted',
-      copyTradeCount: 0,
-      copyTradeResetTime: null,
-      createdAt: new Date().toISOString(),
-      avatarUrl: assignedAvatar
-    };
-
-    usersList.push(newUser);
-    localStorage.setItem('futuregrotex_users', JSON.stringify(usersList));
-    syncUser(newUser);
-
-    const initialTx: Transaction = {
-      id: 'FG-BONUS-WEL',
-      userId: newUser.uid,
-      type: TransactionType.Bonus,
-      amount: 10,
-      status: TransactionStatus.Success,
-      timestamp: new Date().toISOString(),
-      traderName: 'Welcome Gift'
-    };
-    const txs = JSON.parse(localStorage.getItem('futuregrotex_transactions') || '[]') as Transaction[];
-    txs.push(initialTx);
-    localStorage.setItem('futuregrotex_transactions', JSON.stringify(txs));
-
-    showToast('Account created successfully! Enjoy your 10 USDT Welcome Gift.', 'success');
-    loadUserRelatedData(newUser.uid);
+      showToast('Welcome back to NGK Trading!', 'success');
+      setAuthEmail('');
+      setAuthPassword('');
+    } catch (err: any) {
+      console.error(err);
+      let errMsg = 'Authentication failed. Please check credentials.';
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        errMsg = 'Invalid email address or password.';
+      }
+      showToast(errMsg, 'error');
+    } finally {
+      setAuthLoading(false);
+    }
   };
 
-  const handleSignIn = () => {
-    if (!authEmail || !authPassword) {
-      showToast('Email and password are required.', 'error');
-      return;
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      localStorage.removeItem('ngk_fallback_uid');
+      setActiveUid(null);
+      showToast('Successfully signed out of secure session.', 'info');
+      setCurrentScreen('dashboard');
+    } catch (err) {
+      console.error(err);
+      showToast('Sign out failed.', 'error');
     }
-
-    const usersListStr = localStorage.getItem('futuregrotex_users') || '[]';
-    const usersList = JSON.parse(usersListStr) as User[];
-
-    const userMatch = usersList.find(u => u.email.toLowerCase() === authEmail.toLowerCase());
-    if (!userMatch) {
-      showToast('No account found with this email.', 'error');
-      return;
-    }
-
-    syncUser(userMatch);
-    loadUserRelatedData(userMatch.uid);
-    showToast(`Welcome back, ${userMatch.username}!`, 'success');
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('futuregrotex_current_user');
-    setCurrentUser(null);
-    setTransactions([]);
-    setActiveStake(null);
-    setCurrentScreen('dashboard');
-    showToast('Logged out successfully.', 'info');
   };
 
   // Claim streak bonus
-  const handleClaimDailyBonus = () => {
+  const handleClaimDailyBonus = async () => {
     if (!currentUser) return;
     const streak = currentUser.loginStreak + 1;
     const reward = streak * 0.15;
 
-    const u = { ...currentUser };
-    u.mainBalance += reward;
-    u.loginStreak = streak;
-    u.lastBonusClaim = new Date().toISOString();
-    syncUser(u);
+    try {
+      const txId = 'GTX-STREAK-' + Math.random().toString(36).substring(2, 9).toUpperCase();
+      const bonusTx: Transaction = {
+        id: txId,
+        userId: currentUser.uid,
+        type: TransactionType.Bonus,
+        amount: reward,
+        status: TransactionStatus.Success,
+        timestamp: new Date().toISOString(),
+        traderName: 'Daily Claim'
+      };
 
-    const bonusTx: Transaction = {
-      id: 'FG-STREAK-' + Math.random().toString(36).substring(2, 9).toUpperCase(),
-      userId: currentUser.uid,
-      type: TransactionType.Bonus,
-      amount: reward,
-      status: TransactionStatus.Success,
-      timestamp: new Date().toISOString(),
-      traderName: 'Daily Claim'
-    };
+      await setDoc(doc(db, 'users', currentUser.uid, 'transactions', txId), bonusTx);
 
-    const txList = JSON.parse(localStorage.getItem('futuregrotex_transactions') || '[]') as Transaction[];
-    txList.push(bonusTx);
-    localStorage.setItem('futuregrotex_transactions', JSON.stringify(txList));
-    setTransactions(txList.filter(t => t.userId === currentUser.uid));
+      await updateDoc(doc(db, 'users', currentUser.uid), {
+        mainBalance: increment(reward),
+        loginStreak: streak,
+        lastBonusClaim: new Date().toISOString()
+      });
 
-    showToast(`+$${reward.toFixed(2)} USDT Daily Claim added! Streak: ${streak} Days`, 'success');
+      showToast(`+$${reward.toFixed(2)} USDT Daily Claim added! Streak: ${streak} Days`, 'success');
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   // Copy trade deployment
-  const handleStartCopyTrade = (traderName: string, amount: number, traderAvatar?: string, tradePair?: string) => {
+  const handleStartCopyTrade = async (traderName: string, amount: number, traderAvatar?: string, tradePair?: string) => {
     if (!currentUser) return;
 
-    // Real active copy trades in the last 24 hours
-    const txListStr = localStorage.getItem('futuregrotex_transactions') || '[]';
-    const txListAll = JSON.parse(txListStr) as Transaction[];
-    const userCopyTradesLast24h = txListAll.filter(t => 
-      t.userId === currentUser.uid && 
-      t.type === TransactionType.CopyTrade && 
-      (Date.now() - new Date(t.timestamp).getTime()) < 24 * 60 * 60 * 1000
-    );
+    try {
+      // Query past 24 hour copy trades to enforce daily limits
+      const q = query(
+        collection(db, 'users', currentUser.uid, 'transactions'),
+        where('type', '==', TransactionType.CopyTrade)
+      );
+      const snapshot = await getDocs(q);
+      const nowMs = Date.now();
+      const userCopyTradesLast24h = snapshot.docs
+        .map(doc => doc.data() as Transaction)
+        .filter(t => (nowMs - new Date(t.timestamp).getTime()) < 24 * 60 * 60 * 1000);
 
-    if (userCopyTradesLast24h.length >= 2) {
-      const sorted = [...userCopyTradesLast24h].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-      const firstTxTime = new Date(sorted[0].timestamp).getTime();
-      const nextAvailableTime = new Date(firstTxTime + 24 * 60 * 60 * 1000);
-      const remainingMs = nextAvailableTime.getTime() - Date.now();
-      const remainingHours = Math.floor(remainingMs / (60 * 60 * 1000));
-      const remainingMins = Math.ceil((remainingMs % (60 * 60 * 1000)) / (60 * 1000));
-      
-      showToast(`Daily limit reached! Next trade slot opens in ${remainingHours}h ${remainingMins}m.`, 'warning');
-      return;
-    }
+      if (userCopyTradesLast24h.length >= 2) {
+        const sorted = [...userCopyTradesLast24h].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        const firstTxTime = new Date(sorted[0].timestamp).getTime();
+        const nextAvailableTime = new Date(firstTxTime + 24 * 60 * 60 * 1000);
+        const remainingMs = nextAvailableTime.getTime() - Date.now();
+        const remainingHours = Math.floor(remainingMs / (60 * 60 * 1000));
+        const remainingMins = Math.ceil((remainingMs % (60 * 60 * 1000)) / (60 * 1000));
+        
+        showToast(`Daily limit reached! Next trade slot opens in ${remainingHours}h ${remainingMins}m.`, 'warning');
+        return;
+      }
 
-    const isSecondTrade = userCopyTradesLast24h.length === 1;
+      const isSecondTrade = userCopyTradesLast24h.length === 1;
 
-    const u = { ...currentUser };
-    u.mainBalance -= amount;
-    u.totalVolume += amount;
-    u.copyTradeCount = userCopyTradesLast24h.length + 1;
-    
-    if (u.totalVolume >= 20000) {
-      u.tier = VIPRank.Platinum;
-    } else if (u.totalVolume >= 5000) {
-      u.tier = VIPRank.Gold;
-    } else if (u.totalVolume >= 800) {
-      u.tier = VIPRank.Silver;
-    }
+      // Adjust user VIP Rank dynamically based on total Volume
+      const newVolume = currentUser.totalVolume + amount;
+      let newTier = currentUser.tier;
+      if (newVolume >= 20000) {
+        newTier = VIPRank.Platinum;
+      } else if (newVolume >= 5000) {
+        newTier = VIPRank.Gold;
+      } else if (newVolume >= 800) {
+        newTier = VIPRank.Silver;
+      }
 
-    syncUser(u);
+      const txId = 'GTX-CT-' + Math.random().toString(36).substring(2, 9).toUpperCase();
+      const endTime = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 minutes!
 
-    const endTime = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 minutes!
-    const copyTradeTx: Transaction = {
-      id: 'FG-CT-' + Math.random().toString(36).substring(2, 9).toUpperCase(),
-      userId: currentUser.uid,
-      type: TransactionType.CopyTrade,
-      amount,
-      status: TransactionStatus.Pending,
-      timestamp: new Date().toISOString(),
-      traderName,
-      endTime,
-      requiresApproval: isSecondTrade,
-      traderAvatar,
-      tradePair
-    };
+      const copyTradeTx: Transaction = {
+        id: txId,
+        userId: currentUser.uid,
+        type: TransactionType.CopyTrade,
+        amount,
+        status: TransactionStatus.Pending,
+        timestamp: new Date().toISOString(),
+        traderName,
+        endTime,
+        requiresApproval: isSecondTrade,
+        traderAvatar,
+        tradePair
+      };
 
-    txListAll.push(copyTradeTx);
-    localStorage.setItem('futuregrotex_transactions', JSON.stringify(txListAll));
-    setTransactions(txListAll.filter(t => t.userId === currentUser.uid));
+      await setDoc(doc(db, 'users', currentUser.uid, 'transactions', txId), copyTradeTx);
 
-    if (isSecondTrade) {
-      showToast(`VIP 2nd Trade deployed! Placed on Security Hold upon 30m completion.`, 'info');
-    } else {
-      showToast(`Copy Trade with ${traderName} started! Ends in 30 minutes.`, 'info');
+      await updateDoc(doc(db, 'users', currentUser.uid), {
+        mainBalance: increment(-amount),
+        totalVolume: increment(amount),
+        copyTradeCount: userCopyTradesLast24h.length + 1,
+        tier: newTier
+      });
+
+      if (isSecondTrade) {
+        showToast(`VIP 2nd Trade deployed! Placed on Security Hold upon 30m completion.`, 'info');
+      } else {
+        showToast(`Copy Trade with ${traderName} started! Ends in 30 minutes.`, 'info');
+      }
+
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to start copy trade.', 'error');
     }
   };
 
-  // Instant settle for testability and demonstration
-  const handleInstantSettleTrade = (txId: string) => {
+  // Instant settle
+  const handleInstantSettleTrade = async (txId: string) => {
     if (!currentUser) return;
-    const txsStr = localStorage.getItem('futuregrotex_transactions') || '[]';
-    const allTxs = JSON.parse(txsStr) as Transaction[];
-    const txIndex = allTxs.findIndex(t => t.id === txId && t.status === TransactionStatus.Pending);
-    
-    if (txIndex === -1) return;
-    
-    const tx = allTxs[txIndex];
-    const profit = tx.amount * 0.0219;
-    const totalReturn = tx.amount + profit;
-    const isSecondTrade = tx.requiresApproval;
-    
-    const u = { ...currentUser };
-    if (isSecondTrade) {
-      allTxs[txIndex] = {
-        ...tx,
-        status: TransactionStatus.Hold,
-        profit,
-        totalReturn
-      };
-      showToast(`VIP Security check triggered on trade ${tx.id}. Funds placed in Escrow.`, 'warning');
-    } else {
-      u.mainBalance += totalReturn;
-      u.profitBalance += profit;
-      syncUser(u);
-      
-      allTxs[txIndex] = {
-        ...tx,
-        status: TransactionStatus.Success,
-        profit,
-        totalReturn
-      };
-      showToast(`Copy trade complete! +$${profit.toFixed(2)} USDT profits added.`, 'success');
+
+    try {
+      const txRef = doc(db, 'users', currentUser.uid, 'transactions', txId);
+      const txSnap = await getDoc(txRef);
+      if (!txSnap.exists()) return;
+
+      const tx = txSnap.data() as Transaction;
+      if (tx.status !== TransactionStatus.Pending) return;
+
+      const profit = tx.amount * 0.0219;
+      const totalReturn = tx.amount + profit;
+      const isSecondTrade = tx.requiresApproval;
+
+      if (isSecondTrade) {
+        await updateDoc(txRef, {
+          status: TransactionStatus.Hold,
+          profit,
+          totalReturn
+        });
+        showToast(`VIP Security check triggered on trade ${tx.id}. Funds placed in Escrow.`, 'warning');
+      } else {
+        await updateDoc(txRef, {
+          status: TransactionStatus.Success,
+          profit,
+          totalReturn
+        });
+
+        await updateDoc(doc(db, 'users', currentUser.uid), {
+          mainBalance: increment(totalReturn),
+          profitBalance: increment(profit)
+        });
+
+        showToast(`Copy trade complete! +$${profit.toFixed(2)} USDT profits added.`, 'success');
+      }
+    } catch (err) {
+      console.error(err);
     }
-    
-    localStorage.setItem('futuregrotex_transactions', JSON.stringify(allTxs));
-    setTransactions(allTxs.filter(t => t.userId === u.uid));
   };
 
   // Release hold transaction using real 2FA verification
-  const handleReleaseTrade = (txId: string, totpCode: string): boolean => {
+  const handleReleaseTrade = async (txId: string, totpCode: string): Promise<boolean> => {
     if (!currentUser) return false;
 
     if (!currentUser.twoFactorEnabled || !currentUser.twoFactorSecret) {
@@ -680,7 +973,6 @@ export default function App() {
     }
 
     try {
-      // Create OTP instance
       const totp = new OTPAuth.TOTP({
         issuer: 'GTX',
         label: currentUser.email,
@@ -690,10 +982,9 @@ export default function App() {
         secret: currentUser.twoFactorSecret
       });
 
-      // Validate code
       const delta = totp.validate({
         token: totpCode,
-        window: 2 // allow clock drift
+        window: 2
       });
 
       if (delta === null) {
@@ -701,33 +992,32 @@ export default function App() {
         return false;
       }
 
-      const txsStr = localStorage.getItem('futuregrotex_transactions') || '[]';
-      const allTxs = JSON.parse(txsStr) as Transaction[];
-      const txIndex = allTxs.findIndex(t => t.id === txId && t.status === TransactionStatus.Hold);
+      const txRef = doc(db, 'users', currentUser.uid, 'transactions', txId);
+      const txSnap = await getDoc(txRef);
+      if (!txSnap.exists()) {
+        showToast('Held trade not found.', 'error');
+        return false;
+      }
 
-      if (txIndex === -1) {
+      const tx = txSnap.data() as Transaction;
+      if (tx.status !== TransactionStatus.Hold) {
         showToast('Held trade not found or already settled.', 'error');
         return false;
       }
 
-      const tx = allTxs[txIndex];
       const profit = tx.profit || (tx.amount * 0.0219);
       const totalReturn = tx.totalReturn || (tx.amount + profit);
 
-      const u = { ...currentUser };
-      u.mainBalance += totalReturn;
-      u.profitBalance += profit;
-      syncUser(u);
-
-      allTxs[txIndex] = {
-        ...tx,
+      await updateDoc(txRef, {
         status: TransactionStatus.Success,
         profit,
         totalReturn
-      };
+      });
 
-      localStorage.setItem('futuregrotex_transactions', JSON.stringify(allTxs));
-      setTransactions(allTxs.filter(t => t.userId === currentUser.uid));
+      await updateDoc(doc(db, 'users', currentUser.uid), {
+        mainBalance: increment(totalReturn),
+        profitBalance: increment(profit)
+      });
 
       showToast(`2FA Verified! +$${profit.toFixed(2)} USDT released to your main balance!`, 'success');
       return true;
@@ -739,91 +1029,117 @@ export default function App() {
   };
 
   // Staking
-  const handleStartStaking = (amount: number, durationDays: number, dailyROI: number) => {
+  const handleStartStaking = async (amount: number, durationDays: number, dailyROI: number) => {
     if (!currentUser) return;
 
-    const u = { ...currentUser };
-    u.mainBalance -= amount;
-    u.totalStaked += amount;
-    syncUser(u);
+    try {
+      const userRef = doc(db, 'users', currentUser.uid);
+      await updateDoc(userRef, {
+        mainBalance: increment(-amount),
+        totalStaked: increment(amount)
+      });
 
-    const newStake: Stake = {
-      id: 'STAKE-' + Math.random().toString(36).substring(2, 9).toUpperCase(),
-      userId: currentUser.uid,
-      amount,
-      startDate: new Date().toISOString(),
-      // 1 minute in demo = 1 day of staking lock!
-      endDate: new Date(Date.now() + durationDays * 60 * 1000).toISOString(),
-      dailyROI,
-      lastClaimed: new Date().toISOString(),
-      status: 'Active',
-      totalClaimed: 0
-    };
+      const stakeId = 'STAKE-' + Math.random().toString(36).substring(2, 9).toUpperCase();
+      const newStake: Stake = {
+        id: stakeId,
+        userId: currentUser.uid,
+        amount,
+        startDate: new Date().toISOString(),
+        endDate: new Date(Date.now() + durationDays * 60 * 1000).toISOString(), // 1 minute = 1 day lock
+        dailyROI,
+        lastClaimed: new Date().toISOString(),
+        status: 'Active',
+        totalClaimed: 0
+      };
 
-    const stakes = JSON.parse(localStorage.getItem('futuregrotex_stakes') || '[]') as Stake[];
-    stakes.push(newStake);
-    localStorage.setItem('futuregrotex_stakes', JSON.stringify(stakes));
-    setActiveStake(newStake);
+      await setDoc(doc(db, 'users', currentUser.uid, 'stakes', stakeId), newStake);
 
-    const stakeTx: Transaction = {
-      id: 'FG-STAKE-' + Math.random().toString(36).substring(2, 9).toUpperCase(),
-      userId: currentUser.uid,
-      type: TransactionType.Staking,
-      amount,
-      status: TransactionStatus.Success,
-      timestamp: new Date().toISOString(),
-      traderName: `${durationDays}-Day Pool`
-    };
+      const stakeTxId = 'GTX-STAKE-' + Math.random().toString(36).substring(2, 9).toUpperCase();
+      const stakeTx: Transaction = {
+        id: stakeTxId,
+        userId: currentUser.uid,
+        type: TransactionType.Staking,
+        amount,
+        status: TransactionStatus.Success,
+        timestamp: new Date().toISOString(),
+        traderName: `${durationDays}-Day Pool`
+      };
 
-    const txs = JSON.parse(localStorage.getItem('futuregrotex_transactions') || '[]') as Transaction[];
-    txs.push(stakeTx);
-    localStorage.setItem('futuregrotex_transactions', JSON.stringify(txs));
-    setTransactions(txs.filter(t => t.userId === currentUser.uid));
+      await setDoc(doc(db, 'users', currentUser.uid, 'transactions', stakeTxId), stakeTx);
 
-    showToast(`$${amount.toFixed(2)} USDT staked successfully in the ${durationDays}-day pool with ${(dailyROI * 100).toFixed(1)}% daily return!`, 'success');
+      showToast(`$${amount.toFixed(2)} USDT staked successfully in the ${durationDays}-day pool with ${(dailyROI * 100).toFixed(1)}% daily return!`, 'success');
+    } catch (err) {
+      console.error(err);
+      showToast('Staking failed.', 'error');
+    }
   };
 
-  // KYC
-  const handleUpdateKYC = (fullName: string, idNumber: string, nationality: string, documentImage: string) => {
+  // KYC Verification Submission
+  const handleUpdateKYC = async (fullName: string, idNumber: string, nationality: string, documentImage: string) => {
     if (!currentUser) return;
-    const u = { ...currentUser };
-    u.kycStatus = 'pending';
-    u.kycData = {
-      fullName,
-      idNumber,
-      nationality,
-      documentImage,
-      submittedAt: new Date().toISOString()
-    };
-    syncUser(u);
-    showToast('Identity verification submitted. Documents are under review.', 'info');
+    try {
+      await updateDoc(doc(db, 'users', currentUser.uid), {
+        kycStatus: 'pending',
+        kycData: {
+          fullName,
+          idNumber,
+          nationality,
+          documentImage,
+          submittedAt: new Date().toISOString()
+        }
+      });
+      showToast('Identity verification submitted. Documents are under review.', 'info');
+    } catch (err) {
+      console.error(err);
+      showToast('KYC submission failed.', 'error');
+    }
   };
 
-  // Avatar update
-  const handleUpdateAvatar = (avatarUrl: string) => {
+  // Avatar profile updates
+  const handleUpdateAvatar = async (avatarUrl: string) => {
     if (!currentUser) return;
-    const u = { ...currentUser, avatarUrl };
-    syncUser(u);
-    showToast('Profile avatar updated successfully!', 'success');
+    try {
+      await updateDoc(doc(db, 'users', currentUser.uid), {
+        avatarUrl
+      });
+      showToast('Profile avatar updated successfully!', 'success');
+    } catch (err) {
+      console.error(err);
+      showToast('Avatar update failed.', 'error');
+    }
   };
 
-  // 2FA
-  const handleUpdate2FA = (secret: string) => {
+  // 2FA Google Authenticator configuration
+  const handleUpdate2FA = async (secret: string) => {
     if (!currentUser) return;
-    const u = { ...currentUser };
-    u.twoFactorEnabled = true;
-    u.twoFactorSecret = secret;
-    syncUser(u);
-    showToast('Google 2FA security code has been enabled.', 'success');
+    try {
+      await updateDoc(doc(db, 'users', currentUser.uid), {
+        twoFactorEnabled: true,
+        twoFactorSecret: secret
+      });
+      showToast('Google 2FA security code has been enabled.', 'success');
+    } catch (err) {
+      console.error(err);
+      showToast('2FA enablement failed.', 'error');
+    }
   };
 
-  // Change Password
-  const handleUpdatePassword = (pass: string) => {
-    showToast('Password has been updated successfully.', 'success');
+  // Secure Password settings update
+  const handleUpdatePassword = async (pass: string) => {
+    if (!currentUser) return;
+    try {
+      await updateDoc(doc(db, 'users', currentUser.uid), {
+        password: pass
+      });
+      showToast('Password has been updated successfully.', 'success');
+    } catch (err) {
+      console.error(err);
+      showToast('Password update failed.', 'error');
+    }
   };
 
   // Deposit USDT
-  const handleConfirmDeposit = () => {
+  const handleConfirmDeposit = async () => {
     if (!currentUser) return;
     const amt = parseFloat(depositAmount);
     if (isNaN(amt) || amt < 25) {
@@ -831,83 +1147,59 @@ export default function App() {
       return;
     }
 
-    const bonus = amt * 0.10; // 10% Welcome Bonus!
+    setDepositLoading(true);
 
-    const depTx: Transaction = {
-      id: 'FG-DEP-' + Math.random().toString(36).substring(2, 9).toUpperCase(),
-      userId: currentUser.uid,
-      type: TransactionType.Deposit,
-      amount: amt,
-      status: TransactionStatus.Pending,
-      timestamp: new Date().toISOString(),
-      network: depositNetwork,
-      address: depositAddresses[depositNetwork],
-      bonus
-    };
+    try {
+      const bonus = amt * 0.10; // 10% Welcome Bonus!
+      const txId = 'NGK-DEP-' + Math.random().toString(36).substring(2, 9).toUpperCase();
 
-    const txs = JSON.parse(localStorage.getItem('futuregrotex_transactions') || '[]') as Transaction[];
-    txs.push(depTx);
-    localStorage.setItem('futuregrotex_transactions', JSON.stringify(txs));
-    setTransactions(txs.filter(t => t.userId === currentUser.uid));
+      const depTx: Transaction = {
+        id: txId,
+        userId: currentUser.uid,
+        type: TransactionType.Deposit,
+        amount: amt,
+        status: TransactionStatus.Pending,
+        timestamp: new Date().toISOString(),
+        network: depositNetwork,
+        address: depositAddresses[depositNetwork],
+        bonus
+      };
 
-    setDepositOpen(false);
-    showToast(`Deposit submitted! Processing on the blockchain in 5 seconds...`, 'info');
+      // Write deposit doc to subcollection `/users/{uid}/deposit`
+      await setDoc(doc(db, 'users', currentUser.uid, 'deposit', txId), depTx);
+      // Write transactions doc to subcollection `/users/{uid}/transactions`
+      await setDoc(doc(db, 'users', currentUser.uid, 'transactions', txId), depTx);
 
-    setTimeout(() => {
-      const allTxList = JSON.parse(localStorage.getItem('futuregrotex_transactions') || '[]') as Transaction[];
-      const matchIdx = allTxList.findIndex(t => t.id === depTx.id);
-      
-      if (matchIdx !== -1) {
-        allTxList[matchIdx].status = TransactionStatus.Success;
-        localStorage.setItem('futuregrotex_transactions', JSON.stringify(allTxList));
+      // Write to root admin_pending for real Admin Panel approval/rejection
+      await setDoc(doc(db, 'admin_pending', txId), {
+        id: txId,
+        userId: currentUser.uid,
+        username: currentUser.username,
+        userEmail: currentUser.email,
+        type: 'Deposit',
+        amount: amt,
+        bonus,
+        status: 'Pending',
+        timestamp: depTx.timestamp,
+        network: depositNetwork,
+        address: depositAddresses[depositNetwork]
+      });
 
-        const session = localStorage.getItem('futuregrotex_current_user');
-        if (session) {
-          const u = JSON.parse(session) as User;
-          u.mainBalance += (amt + bonus);
-          syncUser(u);
-        }
+      setDepositOpen(false);
+      setDepositLoading(false);
+      showToast(`Deposit submitted! Go to Profile > Admin Portal to approve it.`, 'success');
 
-        const curUserObj = JSON.parse(localStorage.getItem('futuregrotex_current_user') || '{}') as User;
-        if (curUserObj.referrer) {
-          const uList = JSON.parse(localStorage.getItem('futuregrotex_users') || '[]') as User[];
-          const refIdx = uList.findIndex(u => u.uid === curUserObj.referrer);
-          if (refIdx !== -1) {
-            const l1Reward = amt * 0.05; // 5% Level 1 referral
-            uList[refIdx].mainBalance += l1Reward;
-            uList[refIdx].totalCommission += l1Reward;
-            uList[refIdx].teamVolume += amt;
-            localStorage.setItem('futuregrotex_users', JSON.stringify(uList));
-
-            const refTx: Transaction = {
-              id: 'FG-REF-' + Math.random().toString(36).substring(2, 9).toUpperCase(),
-              userId: curUserObj.referrer,
-              type: TransactionType.Commission,
-              amount: l1Reward,
-              status: TransactionStatus.Success,
-              timestamp: new Date().toISOString(),
-              traderName: `Ref: ${curUserObj.username}`
-            };
-            const masterTxs = JSON.parse(localStorage.getItem('futuregrotex_transactions') || '[]') as Transaction[];
-            masterTxs.push(refTx);
-            localStorage.setItem('futuregrotex_transactions', JSON.stringify(masterTxs));
-          }
-        }
-
-        showToast(`Deposit successful! +$${(amt + bonus).toFixed(2)} USDT (including +10% bonus) credited.`, 'success');
-        
-        const activeSess = localStorage.getItem('futuregrotex_current_user');
-        if (activeSess) {
-          loadUserRelatedData(JSON.parse(activeSess).uid);
-        }
-      }
-    }, 5000);
+    } catch (err) {
+      console.error(err);
+      showToast('Deposit request failed to submit.', 'error');
+      setDepositLoading(false);
+    }
 
     setDepositAmount('');
   };
 
   // Withdraw USDT
-  const handleConfirmWithdraw = () => {
+  const handleConfirmWithdraw = async () => {
     if (!currentUser) return;
     const amt = parseFloat(withdrawAmount);
     if (isNaN(amt) || amt < 4) {
@@ -934,78 +1226,150 @@ export default function App() {
       return;
     }
 
-    const u = { ...currentUser };
-    if (amt <= u.profitBalance) {
-      u.profitBalance -= amt;
-    } else {
-      const remainder = amt - u.profitBalance;
-      u.profitBalance = 0;
-      u.mainBalance = Math.max(0, u.mainBalance - remainder);
-    }
+    setWithdrawLoading(true);
 
-    syncUser(u);
+    try {
+      let newProfitBalance = currentUser.profitBalance;
+      let newMainBalance = currentUser.mainBalance;
 
-    const wTx: Transaction = {
-      id: 'FG-WITH-' + Math.random().toString(36).substring(2, 9).toUpperCase(),
-      userId: currentUser.uid,
-      type: TransactionType.Withdraw,
-      amount: amt,
-      status: TransactionStatus.Pending,
-      timestamp: new Date().toISOString(),
-      address: withdrawAddress
-    };
-
-    const txs = JSON.parse(localStorage.getItem('futuregrotex_transactions') || '[]') as Transaction[];
-    txs.push(wTx);
-    localStorage.setItem('futuregrotex_transactions', JSON.stringify(txs));
-    setTransactions(txs.filter(t => t.userId === currentUser.uid));
-
-    setWithdrawOpen(false);
-    showToast(`Withdrawal request of $${amt.toFixed(2)} USDT submitted.`, 'success');
-
-    setTimeout(() => {
-      const allTxList = JSON.parse(localStorage.getItem('futuregrotex_transactions') || '[]') as Transaction[];
-      const matchIdx = allTxList.findIndex(t => t.id === wTx.id);
-      
-      if (matchIdx !== -1) {
-        allTxList[matchIdx].status = TransactionStatus.Success;
-        localStorage.setItem('futuregrotex_transactions', JSON.stringify(allTxList));
-        
-        showToast(`Withdrawal of $${amt.toFixed(2)} USDT completed on-chain! Check your wallet.`, 'success');
-        
-        const activeSess = localStorage.getItem('futuregrotex_current_user');
-        if (activeSess) {
-          loadUserRelatedData(JSON.parse(activeSess).uid);
-        }
+      if (amt <= currentUser.profitBalance) {
+        newProfitBalance -= amt;
+      } else {
+        const remainder = amt - currentUser.profitBalance;
+        newProfitBalance = 0;
+        newMainBalance = Math.max(0, currentUser.mainBalance - remainder);
       }
-    }, 8000);
+
+      const txId = 'NGK-WITH-' + Math.random().toString(36).substring(2, 9).toUpperCase();
+
+      const wTx: Transaction = {
+        id: txId,
+        userId: currentUser.uid,
+        type: TransactionType.Withdraw,
+        amount: amt,
+        status: TransactionStatus.Pending,
+        timestamp: new Date().toISOString(),
+        address: withdrawAddress
+      };
+
+      await setDoc(doc(db, 'users', currentUser.uid, 'withdraw', txId), wTx);
+      await setDoc(doc(db, 'users', currentUser.uid, 'transactions', txId), wTx);
+
+      await updateDoc(doc(db, 'users', currentUser.uid), {
+        profitBalance: newProfitBalance,
+        mainBalance: newMainBalance
+      });
+
+      // Write to root admin_pending for real Admin Panel approval/rejection
+      await setDoc(doc(db, 'admin_pending', txId), {
+        id: txId,
+        userId: currentUser.uid,
+        username: currentUser.username,
+        userEmail: currentUser.email,
+        type: 'Withdraw',
+        amount: amt,
+        status: 'Pending',
+        timestamp: wTx.timestamp,
+        address: withdrawAddress
+      });
+
+      setWithdrawOpen(false);
+      setWithdrawLoading(false);
+      showToast(`Withdrawal requested! Go to Profile > Admin Portal to approve it.`, 'success');
+
+    } catch (err) {
+      console.error(err);
+      showToast('Withdrawal failed to submit.', 'error');
+      setWithdrawLoading(false);
+    }
 
     setWithdrawAmount('');
     setWithdrawAddress('');
     setWithdrawPin('');
   };
 
-  // Send Chat
-  const handleSendChatMessage = () => {
+  // Send Chat Message
+  const handleSendChatMessage = async () => {
     if (!currentUser || !newChatMessage.trim()) return;
 
-    const newMsg: ChatMessage = {
-      id: 'c-' + Date.now(),
-      userId: currentUser.uid,
-      username: currentUser.username,
-      userEmail: currentUser.email,
-      message: newChatMessage.trim(),
-      timestamp: new Date().toISOString()
-    };
+    try {
+      const newMsg = {
+        userId: currentUser.uid,
+        username: currentUser.username,
+        userEmail: currentUser.email,
+        message: newChatMessage.trim(),
+        timestamp: new Date().toISOString()
+      };
 
-    const next = [...chatMessages, newMsg];
-    localStorage.setItem('futuregrotex_chats', JSON.stringify(next));
-    setChatMessages(next);
-    setNewChatMessage('');
+      await addDoc(collection(db, 'chats'), newMsg);
+      setNewChatMessage('');
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   return (
     <div className="bg-zinc-950 text-zinc-100 min-h-screen relative font-sans overflow-x-hidden pb-24">
+      
+      {/* 0. NGK Animated Splash Screen Overlay */}
+      <AnimatePresence>
+        {showSplash && (
+          <motion.div
+            initial={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.6 }}
+            className="fixed inset-0 z-[100] bg-zinc-950 flex flex-col items-center justify-center p-6 text-center select-none"
+          >
+            <div className="space-y-6 max-w-sm mx-auto flex flex-col items-center justify-center">
+              {/* Rotating glowing metallic token/logo */}
+              <motion.div
+                animate={{ rotateY: 360 }}
+                transition={{ duration: 2.2, repeat: Infinity, ease: "linear" }}
+                className="w-24 h-24 rounded-full bg-gradient-to-tr from-cyan-400 via-[#00bfa5] to-zinc-900 border-4 border-cyan-400/80 flex items-center justify-center shadow-[0_0_40px_rgba(6,182,212,0.35)] relative overflow-hidden"
+              >
+                <div className="absolute inset-0.5 rounded-full bg-zinc-950 flex items-center justify-center">
+                  <span className="text-3xl font-black tracking-widest text-cyan-400 font-mono italic pl-1">NGK</span>
+                </div>
+                {/* Visual shine ring */}
+                <div className="absolute top-0 left-0 right-0 h-1/2 bg-white/5 skew-y-12" />
+              </motion.div>
+
+              <div className="space-y-1.5">
+                <motion.h1 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 }}
+                  className="text-2xl font-black text-white tracking-widest uppercase font-mono"
+                >
+                  NGK EXCHANGE
+                </motion.h1>
+                <motion.p 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.5 }}
+                  className="text-[10px] text-zinc-500 uppercase tracking-widest font-mono font-bold leading-relaxed max-w-[280px]"
+                >
+                  Automated Quantitative Node &amp; High-Yield Staking Pool
+                </motion.p>
+              </div>
+
+              {/* Status bar loading simulation */}
+              <div className="w-48 h-1 bg-zinc-900 rounded-full overflow-hidden border border-zinc-850/40 mt-4">
+                <motion.div 
+                  initial={{ width: "0%" }}
+                  animate={{ width: "100%" }}
+                  transition={{ duration: 2.8, ease: "easeInOut" }}
+                  className="h-full bg-gradient-to-r from-cyan-500 to-[#00bfa5] rounded-full"
+                />
+              </div>
+
+              <span className="text-[8px] text-zinc-650 font-bold uppercase tracking-widest font-mono mt-1 block">
+                Verifying Secure SSL Nodes...
+              </span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       
       {/* Toast Alert popovers */}
       <AnimatePresence>
@@ -1049,14 +1413,14 @@ export default function App() {
               </button>
               <div className="flex items-center gap-3.5">
                 <button 
-                  onClick={() => showToast("GTX Global English support node selected.", "info")}
+                  onClick={() => showToast("NGK Global English support node selected.", "info")}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-zinc-900/50 border border-zinc-850/60 text-[10px] font-bold text-zinc-300 hover:text-white transition"
                 >
                   <Globe size={12} className="text-cyan-400" />
                   <span>EN</span>
                 </button>
                 <button 
-                  onClick={() => showToast("Connecting to live GTX Support Node...", "info")}
+                  onClick={() => showToast("Connecting to live NGK Support Node...", "info")}
                   className="w-9 h-9 rounded-full bg-zinc-900 border border-zinc-850 flex items-center justify-center text-zinc-300 hover:text-white hover:border-cyan-500/40 transition"
                 >
                   <Headphones size={15} />
@@ -1070,7 +1434,7 @@ export default function App() {
                 <ThreeDLogo size="md" />
                 <div className="space-y-1">
                   <h1 className="text-2xl font-black text-white tracking-tight uppercase font-mono">
-                    {isLoginMode ? "Welcome to GTX" : "Create GTX Account"}
+                    {isLoginMode ? "Welcome to NGK" : "Create NGK Account"}
                   </h1>
                   <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">
                     {isLoginMode ? "Secure Copy Trading & Staking Syndicate" : "Claim your 10 USDT Welcome Gift Now"}
@@ -1121,7 +1485,7 @@ export default function App() {
                         </div>
                         <input 
                           type={authMethod === 'email' ? 'email' : 'tel'} 
-                          placeholder={authMethod === 'email' ? 'alipy175@gmail.com' : 'Please enter mobile number'}
+                          placeholder={authMethod === 'email' ? 'trader@gmail.com' : 'Please enter mobile number'}
                           value={authEmail}
                           onChange={(e) => setAuthEmail(e.target.value)}
                           className="w-full bg-zinc-950 border border-zinc-850 rounded-xl pl-10 pr-4 py-3 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/20 font-mono transition duration-200"
@@ -1149,6 +1513,21 @@ export default function App() {
                         </button>
                       </div>
 
+                      {/* Password Strength Indicator Widget */}
+                      {authPassword && (
+                        <div className="space-y-1 px-1">
+                          <div className="flex justify-between items-center text-[10px]">
+                            <span className="text-zinc-500 uppercase font-bold font-mono">Security Check:</span>
+                            <span className={`font-bold font-mono ${getPasswordStrength(authPassword).color}`}>
+                              {getPasswordStrength(authPassword).text}
+                            </span>
+                          </div>
+                          <div className="w-full h-1 bg-zinc-900 rounded-full overflow-hidden">
+                            <div className={`h-full transition-all duration-300 ${getPasswordStrength(authPassword).barColor} ${getPasswordStrength(authPassword).width}`} />
+                          </div>
+                        </div>
+                      )}
+
                       {/* Forgot password */}
                       <div className="text-right">
                         <button 
@@ -1162,9 +1541,21 @@ export default function App() {
                       {/* Action Button */}
                       <button
                         onClick={handleSignIn}
-                        className="w-full bg-cyan-500 hover:bg-cyan-400 text-zinc-950 font-black py-3 rounded-xl text-xs uppercase tracking-wider text-center transition duration-200 shadow-lg shadow-cyan-500/10 active:scale-[0.98]"
+                        disabled={authLoading}
+                        className={`w-full font-black py-3 rounded-xl text-xs uppercase tracking-wider text-center transition duration-200 shadow-lg flex items-center justify-center gap-2 ${
+                          authLoading 
+                            ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed border border-zinc-850' 
+                            : 'bg-cyan-500 hover:bg-cyan-400 text-zinc-950 shadow-cyan-500/10 active:scale-[0.98]'
+                        }`}
                       >
-                        Login
+                        {authLoading ? (
+                          <>
+                            <span className="w-3.5 h-3.5 border-2 border-zinc-950 border-t-transparent rounded-full animate-spin" />
+                            Signing In...
+                          </>
+                        ) : (
+                          'Login'
+                        )}
                       </button>
 
                       {/* Toggle panel view */}
@@ -1223,6 +1614,21 @@ export default function App() {
                         </button>
                       </div>
 
+                      {/* Password Strength Indicator Widget */}
+                      {authPassword && (
+                        <div className="space-y-1 px-1">
+                          <div className="flex justify-between items-center text-[10px]">
+                            <span className="text-zinc-500 uppercase font-bold font-mono">Password Quality:</span>
+                            <span className={`font-bold font-mono ${getPasswordStrength(authPassword).color}`}>
+                              {getPasswordStrength(authPassword).text}
+                            </span>
+                          </div>
+                          <div className="w-full h-1 bg-zinc-900 rounded-full overflow-hidden">
+                            <div className={`h-full transition-all duration-300 ${getPasswordStrength(authPassword).barColor} ${getPasswordStrength(authPassword).width}`} />
+                          </div>
+                        </div>
+                      )}
+
                       {/* Pin */}
                       <input 
                         type="password" 
@@ -1245,9 +1651,21 @@ export default function App() {
                       {/* Register Submit */}
                       <button
                         onClick={handleSignUp}
-                        className="w-full bg-cyan-500 hover:bg-cyan-400 text-zinc-950 font-black py-3 rounded-xl text-xs uppercase tracking-wider text-center transition duration-200 shadow-lg shadow-cyan-500/10 active:scale-[0.98]"
+                        disabled={authLoading}
+                        className={`w-full font-black py-3 rounded-xl text-xs uppercase tracking-wider text-center transition duration-200 shadow-lg flex items-center justify-center gap-2 ${
+                          authLoading 
+                            ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed border border-zinc-850' 
+                            : 'bg-cyan-500 hover:bg-cyan-400 text-zinc-950 shadow-cyan-500/10 active:scale-[0.98]'
+                        }`}
                       >
-                        Register Now
+                        {authLoading ? (
+                          <>
+                            <span className="w-3.5 h-3.5 border-2 border-zinc-950 border-t-transparent rounded-full animate-spin" />
+                            Registering...
+                          </>
+                        ) : (
+                          'Register Now'
+                        )}
                       </button>
 
                       {/* Toggle panel view */}
@@ -1325,6 +1743,7 @@ export default function App() {
                       onStartCopyTrade={handleStartCopyTrade}
                       onReleaseTrade={handleReleaseTrade}
                       onInstantSettleTrade={handleInstantSettleTrade}
+                      showToast={showToast}
                     />
                   </div>
                 )}
@@ -1361,7 +1780,6 @@ export default function App() {
                       onNavigate={(screen) => setCurrentScreen(screen)}
                       transactions={transactions}
                       onReload={() => {
-                        loadUserRelatedData(currentUser.uid);
                         showToast('Transaction list updated.', 'success');
                       }}
                     />
@@ -1373,6 +1791,60 @@ export default function App() {
                     <Support 
                       onNavigate={(screen) => setCurrentScreen(screen)} 
                     />
+                  </div>
+                )}
+
+                {currentScreen === 'admin' && (
+                  <div key="admin">
+                    {currentUser?.email === 'admin@gmail.com' ? (
+                      <AdminPanel 
+                        onNavigate={(screen) => setCurrentScreen(screen)} 
+                        currentUser={currentUser!}
+                        showToast={showToast}
+                      />
+                    ) : (
+                      <div className="p-6 max-w-md mx-auto text-center space-y-6">
+                        <div className="w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 mx-auto animate-pulse">
+                          <Shield size={32} />
+                        </div>
+                        
+                        <div className="space-y-1.5">
+                          <h2 className="text-sm font-bold text-white uppercase tracking-wider font-mono">NGK SECURE NODE</h2>
+                          <p className="text-[10px] text-zinc-500 font-mono uppercase">Decryption password required for administrative deck</p>
+                        </div>
+
+                        <div className="bg-zinc-950 border border-zinc-850 rounded-2xl p-5 space-y-4 text-left">
+                          <div className="space-y-1">
+                            <label className="text-[9px] text-zinc-500 uppercase font-mono font-bold tracking-wider">Officer Email</label>
+                            <input 
+                              type="email" 
+                              placeholder="admin@gmail.com"
+                              value={adminGateEmail}
+                              onChange={(e) => setAdminGateEmail(e.target.value)}
+                              className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-xs text-white placeholder-zinc-700 font-mono focus:outline-none focus:border-cyan-500"
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[9px] text-zinc-500 uppercase font-mono font-bold tracking-wider">Secure Password Key</label>
+                            <input 
+                              type="password" 
+                              placeholder="••••••••"
+                              value={adminGatePassword}
+                              onChange={(e) => setAdminGatePassword(e.target.value)}
+                              className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-xs text-white placeholder-zinc-700 font-mono focus:outline-none focus:border-cyan-500"
+                            />
+                          </div>
+
+                          <button 
+                            onClick={handleAdminGateSubmit}
+                            className="w-full bg-cyan-500 hover:bg-cyan-400 text-zinc-950 font-black py-3 rounded-xl text-xs uppercase tracking-wider text-center transition font-mono shadow-md shadow-cyan-500/10 active:scale-[0.98]"
+                          >
+                            Decrypt Admin Console
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1554,14 +2026,21 @@ export default function App() {
                       
                       <button 
                         onClick={handleConfirmDeposit}
-                        disabled={parseFloat(depositAmount) < 25}
-                        className={`flex-1 font-bold py-3 rounded text-xs uppercase tracking-wider transition font-mono ${
-                          parseFloat(depositAmount) < 25
+                        disabled={parseFloat(depositAmount) < 25 || depositLoading}
+                        className={`flex-1 font-bold py-3 rounded text-xs uppercase tracking-wider transition font-mono flex items-center justify-center gap-2 ${
+                          parseFloat(depositAmount) < 25 || depositLoading
                             ? 'bg-zinc-900 text-zinc-500 border border-zinc-800 cursor-not-allowed'
                             : 'bg-cyan-500 hover:bg-cyan-400 text-zinc-950'
                         }`}
                       >
-                        Confirm Deposit
+                        {depositLoading ? (
+                          <>
+                            <span className="w-3.5 h-3.5 border-2 border-zinc-950 border-t-transparent rounded-full animate-spin" />
+                            Processing...
+                          </>
+                        ) : (
+                          'Confirm Deposit'
+                        )}
                       </button>
                     </div>
                   </div>
@@ -1668,14 +2147,21 @@ export default function App() {
                     
                     <button 
                       onClick={handleConfirmWithdraw}
-                      disabled={parseFloat(withdrawAmount) < 4 || !withdrawAddress || !withdrawPin}
-                      className={`flex-1 font-bold py-3 rounded text-xs uppercase tracking-wider transition font-mono ${
-                        parseFloat(withdrawAmount) < 4 || !withdrawAddress || !withdrawPin
+                      disabled={parseFloat(withdrawAmount) < 4 || !withdrawAddress || !withdrawPin || withdrawLoading}
+                      className={`flex-1 font-bold py-3 rounded text-xs uppercase tracking-wider transition font-mono flex items-center justify-center gap-2 ${
+                        parseFloat(withdrawAmount) < 4 || !withdrawAddress || !withdrawPin || withdrawLoading
                           ? 'bg-zinc-900 text-zinc-500 border border-zinc-800 cursor-not-allowed'
                           : 'bg-cyan-500 hover:bg-cyan-400 text-zinc-950'
                       }`}
                     >
-                      Withdraw
+                      {withdrawLoading ? (
+                        <>
+                          <span className="w-3.5 h-3.5 border-2 border-zinc-950 border-t-transparent rounded-full animate-spin" />
+                          Processing...
+                        </>
+                      ) : (
+                        'Withdraw'
+                      )}
                     </button>
                   </div>
                 </div>
