@@ -219,7 +219,7 @@ export default function AgentSupportPanel({ onNavigate, showToast }: AgentSuppor
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-140px)] space-y-4">
+    <div className="px-4 pb-4 flex flex-col flex-1 h-full min-h-0 space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between bg-zinc-900/60 p-3 rounded-xl border border-zinc-900">
         <div className="flex items-center gap-2.5">
@@ -346,9 +346,9 @@ export default function AgentSupportPanel({ onNavigate, showToast }: AgentSuppor
         </div>
       ) : (
         /* 2. LIVE CHAT DASHBOARD VIEW */
-        <div className="flex-1 flex gap-3 h-[calc(100%-60px)] min-h-[350px]">
+        <div className="flex-1 flex gap-3 h-full min-h-0 overflow-hidden">
           {/* Left panel: Active chat rooms list */}
-          <div className="w-1/3 border border-zinc-900 bg-zinc-950/40 rounded-2xl flex flex-col overflow-hidden">
+          <div className={`w-full md:w-80 shrink-0 border border-zinc-900 bg-zinc-950/40 rounded-2xl flex flex-col overflow-hidden ${selectedChat ? 'hidden md:flex' : 'flex'}`}>
             <div className="p-3 border-b border-zinc-900 shrink-0">
               <span className="text-[8px] text-zinc-500 font-bold uppercase font-mono tracking-wider flex items-center gap-1.5">
                 <MessageSquare size={11} className="text-cyan-400" /> Active Communications ({chats.length})
@@ -391,21 +391,27 @@ export default function AgentSupportPanel({ onNavigate, showToast }: AgentSuppor
           </div>
 
           {/* Right panel: Active chat thread */}
-          <div className="flex-1 border border-zinc-900 bg-zinc-950/20 rounded-2xl flex flex-col overflow-hidden">
+          <div className={`flex-1 border border-zinc-900 bg-zinc-950/20 rounded-2xl flex flex-col overflow-hidden ${selectedChat ? 'flex' : 'hidden md:flex'}`}>
             {selectedChat ? (
               <>
                 {/* Active Thread User Info */}
                 <div className="p-3 border-b border-zinc-900 flex justify-between items-center bg-zinc-950/60 shrink-0">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded bg-zinc-900 border border-zinc-800 flex items-center justify-center text-cyan-400 text-xs font-mono font-black">
-                      {selectedChat.username.charAt(0).toUpperCase()}
+                  <div className="flex items-center gap-2 min-w-0">
+                    <button 
+                      onClick={() => setSelectedChat(null)} 
+                      className="md:hidden p-1 bg-zinc-900 border border-zinc-850 hover:bg-zinc-850 rounded text-zinc-400 mr-1 shrink-0 transition"
+                    >
+                      <ArrowLeft size={13} />
+                    </button>
+                    <div className="w-7 h-7 rounded bg-zinc-900 border border-zinc-800 flex items-center justify-center text-cyan-400 text-xs font-mono font-black shrink-0">
+                      {(selectedChat.username || selectedChat.userEmail || 'I').charAt(0).toUpperCase()}
                     </div>
-                    <div>
-                      <h3 className="text-[10px] font-bold text-white font-mono uppercase leading-tight">{selectedChat.username}</h3>
-                      <p className="text-[8px] text-zinc-500 font-mono">{selectedChat.userEmail}</p>
+                    <div className="min-w-0">
+                      <h3 className="text-[10px] font-bold text-white font-mono uppercase leading-tight truncate">{selectedChat.username || selectedChat.userEmail}</h3>
+                      <p className="text-[8px] text-zinc-500 font-mono truncate">{selectedChat.userEmail}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1.5 text-[8px] text-emerald-400 font-bold uppercase font-mono">
+                  <div className="flex items-center gap-1.5 text-[8px] text-emerald-400 font-bold uppercase font-mono shrink-0">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
                     <span>Live Tunnel Secured</span>
                   </div>
@@ -428,7 +434,7 @@ export default function AgentSupportPanel({ onNavigate, showToast }: AgentSuppor
                               />
                             ) : (
                               <div className="w-6 h-6 rounded-lg bg-zinc-900 border border-zinc-800 text-cyan-400 flex items-center justify-center text-[10px] font-black">
-                                {selectedChat.username.charAt(0).toUpperCase()}
+                                {(selectedChat.username || selectedChat.userEmail || 'I').charAt(0).toUpperCase()}
                               </div>
                             )}
                           </div>

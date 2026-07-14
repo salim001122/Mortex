@@ -113,38 +113,43 @@ export default function AdminPanel({ onNavigate, currentUser, showToast }: Admin
 
         if (userSnap.exists()) {
           const userObj = userSnap.data();
-          // Pay referral commission if exists
+          
           if (userObj.invitedBy) {
             const referrersQuery = query(collection(db, 'users'), where('referralCode', '==', userObj.invitedBy));
             const referrersSnap = await getDocs(referrersQuery);
             if (!referrersSnap.empty) {
               const referrerSnap = referrersSnap.docs[0];
               const referrerUid = referrerSnap.id;
-              const commissionAmount = tx.amount * 0.05; // 5% L1 Referral Reward
 
+              // Update parent's teamVolume
               await updateDoc(doc(db, 'users', referrerUid), {
-                mainBalance: increment(commissionAmount),
-                totalCommission: increment(commissionAmount),
                 teamVolume: increment(tx.amount)
               });
 
-              const refTxId = 'NGK-REF-' + Math.random().toString(36).substring(2, 9).toUpperCase();
-              const refTx: Transaction = {
-                id: refTxId,
-                userId: referrerUid,
-                type: TransactionType.Commission,
-                amount: commissionAmount,
-                status: TransactionStatus.Success,
-                timestamp: new Date().toISOString(),
-                traderName: `Ref: ${userObj.username || 'Investor'}`
-              };
+              // If this is the user's first successful deposit, activate them in the referral system
+              if (!userObj.isReferralActive) {
+                await updateDoc(userDocRef, { isReferralActive: true });
 
-              await setDoc(doc(db, 'users', referrerUid, 'transactions', refTxId), refTx);
-              await setDoc(doc(db, 'users', referrerUid, 'refers', refTxId), {
-                ...refTx,
-                subMemberName: userObj.username || 'Investor',
-                level: 1
-              });
+                // Increment parent's teamCount (active direct referrals)
+                await updateDoc(doc(db, 'users', referrerUid), {
+                  teamCount: increment(1)
+                });
+
+                // Update referred child state to active: true in parent's team and refers collections
+                const parentTeamRef = collection(db, 'users', referrerUid, 'team');
+                const teamQ = query(parentTeamRef, where('childUid', '==', tx.userId));
+                const teamSnap = await getDocs(teamQ);
+                for (const docSnap of teamSnap.docs) {
+                  await updateDoc(doc(db, 'users', referrerUid, 'team', docSnap.id), { active: true });
+                }
+
+                const parentRefersRef = collection(db, 'users', referrerUid, 'refers');
+                const refersQ = query(parentRefersRef, where('childUid', '==', tx.userId));
+                const refersSnap = await getDocs(refersQ);
+                for (const docSnap of refersSnap.docs) {
+                  await updateDoc(doc(db, 'users', referrerUid, 'refers', docSnap.id), { active: true });
+                }
+              }
             }
           }
         }

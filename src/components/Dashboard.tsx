@@ -176,9 +176,9 @@ export default function Dashboard({
             </div>
           </div>
 
-          <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 text-[9px] font-bold px-2.5 py-1 rounded-lg tracking-wider font-mono uppercase flex items-center gap-1.5 shadow-xs">
-            <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
-            +2.19% Daily ROI
+          <span className="bg-cyan-500/10 text-cyan-400 border border-cyan-500/25 text-[9px] font-bold px-2.5 py-1 rounded-lg tracking-wider font-mono uppercase flex items-center gap-1.5 shadow-xs">
+            <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-pulse" />
+            Secure System Active
           </span>
         </div>
 
@@ -414,7 +414,7 @@ export default function Dashboard({
                             ? 'bg-amber-950/40 border-amber-800 text-amber-400' 
                             : 'bg-zinc-850 border-zinc-700 text-cyan-400'
                         }`}>
-                          {trade.traderName?.charAt(0)}
+                          {(trade.traderName || 'T').charAt(0)}
                         </div>
                         <div>
                           <div className="flex items-center gap-2">

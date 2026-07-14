@@ -254,7 +254,7 @@ export default function History({
           {/* Secure Guarantee Tag */}
           <div className="flex items-center justify-center gap-1.5 text-zinc-500 text-[9px] font-bold tracking-wider uppercase font-mono text-center">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" style={{ animationDuration: '3s' }} />
-            GTX Securitized Blockchain Ledger Receipt
+            NGK Securitized Blockchain Ledger Receipt
           </div>
         </div>
 
@@ -412,9 +412,15 @@ export default function History({
                 {/* Amount details */}
                 <div className="mt-4 flex justify-between items-end border-t border-zinc-800/80 pt-3">
                   <div>
-                    <span className={`text-sm font-mono font-bold ${amtColor}`}>
-                      {amtPrefix}{tx.amount.toFixed(2)} USDT
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <svg className="w-4 h-4 inline-block align-middle shrink-0" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="12" cy="12" r="10" fill="#26A17B" />
+                        <path d="M12.2 6.5c-3.2 0-5.8 1.1-5.8 2.5s2.6 2.5 5.8 2.5 5.8-1.1 5.8-2.5-2.6-2.5-5.8-2.5zm3.2 2.7h-2.1v4.8h-2.2v-4.8H9v-1.1h6.4v1.1z" fill="white" />
+                      </svg>
+                      <span className={`text-sm font-mono font-bold ${amtColor}`}>
+                        {amtPrefix}{tx.amount.toFixed(2)} USDT
+                      </span>
+                    </div>
                     
                     {/* Nested specifications details */}
                     {tx.bonus && tx.bonus > 0 && (
@@ -440,7 +446,7 @@ export default function History({
                   </div>
                   
                   <div className="text-right flex flex-col items-end">
-                    <span className="text-[9px] text-zinc-550 font-mono">#{tx.id.slice(0, 8).toUpperCase()}</span>
+                    <span className="text-[9px] text-zinc-550 font-mono">#{(tx.id || '').slice(0, 8).toUpperCase()}</span>
                     <span className="text-[8px] text-cyan-400 font-mono mt-1 opacity-70">Click for details</span>
                   </div>
                 </div>

@@ -101,7 +101,7 @@ export default function Support({ user, onNavigate }: SupportProps) {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
-      className="space-y-3.5 px-4 pb-12 flex flex-col h-[calc(100vh-140px)]"
+      className="px-4 pb-4 flex flex-col flex-1 h-full min-h-0 space-y-3"
     >
       {/* Header */}
       <div className="flex items-center gap-2.5 bg-zinc-900/40 p-3 rounded-xl border border-zinc-900 shrink-0">
@@ -140,7 +140,7 @@ export default function Support({ user, onNavigate }: SupportProps) {
       </div>
 
       {/* Chat Messages Viewport */}
-      <div className="flex-1 overflow-y-auto bg-zinc-950 border border-zinc-900 rounded-2xl p-4 space-y-4 min-h-[120px]">
+      <div className="flex-1 overflow-y-auto bg-zinc-950 border border-zinc-900 rounded-2xl p-4 space-y-4 min-h-0">
         {/* Automatic Welcome Message when thread is fresh */}
         {messages.length === 0 && (
           <div className="flex justify-start">
@@ -184,7 +184,7 @@ export default function Support({ user, onNavigate }: SupportProps) {
                     />
                   ) : (
                     <div className="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 text-cyan-400 flex items-center justify-center text-xs font-mono font-black uppercase">
-                      {user.username.charAt(0)}
+                      {(user?.username || user?.email || 'I').charAt(0)}
                     </div>
                   )}
                 </div>

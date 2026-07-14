@@ -73,10 +73,11 @@ export interface CountryTrader {
 }
 
 export const getTradersForCountry = (countryName: string): CountryTrader[] => {
+  const safeCountry = countryName || 'Uzbekistan';
   // Compute a seed from the countryName so it's deterministic but unique per country
   let seedNum = 0;
-  for (let i = 0; i < countryName.length; i++) {
-    seedNum += countryName.charCodeAt(i) * (i + 1);
+  for (let i = 0; i < safeCountry.length; i++) {
+    seedNum += safeCountry.charCodeAt(i) * (i + 1);
   }
 
   // A wide pool of high-quality, professional face portraits from Unsplash
@@ -107,34 +108,34 @@ export const getTradersForCountry = (countryName: string): CountryTrader[] => {
   // Tailored regional localized names
   let names = ['Alpha Pulse', 'Infinity Trades', 'Quant Edge'];
 
-  if (countryName === 'Pakistan') {
+  if (safeCountry === 'Pakistan') {
     names = ['Hamza Crypto 🇵🇰', 'Ayesha FX 🇵🇰', 'Zayn Scalping 🇵🇰'];
-  } else if (countryName === 'Egypt') {
+  } else if (safeCountry === 'Egypt') {
     names = ['Amr Ibrahim 🇪🇬', 'Nour Trade 🇪🇬', 'Tarek El-Amin 🇪🇬'];
-  } else if (countryName === 'Dubai') {
+  } else if (safeCountry === 'Dubai') {
     names = ['Zayed Capital 🇦🇪', 'Amira Trades 🇦🇪', 'Khalifa Whale 🇦🇪'];
-  } else if (countryName === 'Saudi Arabia') {
+  } else if (safeCountry === 'Saudi Arabia') {
     names = ['Riyadh Scalp 🇸🇦', 'Fahad Al-Saud 🇸🇦', 'Yasmin Forex 🇸🇦'];
-  } else if (countryName === 'Oman' || countryName === 'Muscat') {
+  } else if (safeCountry === 'Oman' || safeCountry === 'Muscat') {
     names = ['Said Al-Said 🇴🇲', 'Omani Bull 🇴🇲', 'Muscat Quantum 🇴🇲'];
-  } else if (countryName === 'Arab Mamalik') {
+  } else if (safeCountry === 'Arab Mamalik') {
     names = ['Emaar Capital 🇦🇪', 'Al-Maktoum FX 🇦🇪', 'Bait-Al-Mal 🇸🇦'];
-  } else if (countryName === 'India') {
+  } else if (safeCountry === 'India') {
     names = ['Rajesh Crypto 🇮🇳', 'Priya Quant 🇮🇳', 'Aditya Whale 🇮🇳'];
-  } else if (countryName === 'Bangladesh') {
+  } else if (safeCountry === 'Bangladesh') {
     names = ['Sabbir FX 🇧🇩', 'Tariq Al-Mamun 🇧🇩', 'Nusrat Coins 🇧🇩'];
-  } else if (countryName === 'Italy') {
+  } else if (safeCountry === 'Italy') {
     names = ['Giovanni Milan 🇮🇹', 'Sofia Trade 🇮🇹', 'Matteo Crypto 🇮🇹'];
-  } else if (countryName === 'Germany') {
+  } else if (safeCountry === 'Germany') {
     names = ['Hans Berlin 🇩🇪', 'Emma Scalper 🇩🇪', 'Maximilian Quant 🇩🇪'];
-  } else if (countryName === 'Uzbekistan') {
+  } else if (safeCountry === 'Uzbekistan') {
     names = ['Sherzod Crypto 🇺🇿', 'Nodira Trades 🇺🇿', 'Alisher USDT 🇺🇿'];
-  } else if (countryName === 'United Kingdom') {
+  } else if (safeCountry === 'United Kingdom') {
     names = ['Sterling FX 🇬🇧', 'Victoria Coins 🇬🇧', 'Oliver Trades 🇬🇧'];
-  } else if (countryName === 'Indonesia') {
+  } else if (safeCountry === 'Indonesia') {
     names = ['Budi Santoso 🇮🇩', 'Siti Rahma 🇮🇩', 'Pratama Trade 🇮🇩'];
   } else {
-    const key = countryName.slice(0, 5);
+    const key = safeCountry.slice(0, 5);
     names = [`${key} Elite`, `${key} Alpha`, `${key} Quant`];
   }
 
@@ -709,7 +710,7 @@ export default function CopyTrading({
                         />
                       ) : (
                         <div className="w-9 h-9 rounded-xl bg-zinc-950 border border-zinc-850 flex items-center justify-center font-black text-cyan-400 font-mono text-xs uppercase">
-                          {trade.traderName.slice(0, 2)}
+                          {(trade.traderName || 'Trader').slice(0, 2)}
                         </div>
                       )}
 

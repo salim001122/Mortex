@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { 
   ArrowLeft, 
   Users, 
@@ -63,6 +63,47 @@ export default function Referral({
 
     return () => unsubscribe();
   }, [user?.uid]);
+
+  // Group team list by user to prevent duplicate entries and show sum of profits/commissions
+  const uniqueTeamList = useMemo(() => {
+    const map = new Map<string, {
+      id: string;
+      name: string;
+      date: string;
+      profit: number;
+      active: boolean;
+      level: number;
+      timestamp: string;
+    }>();
+
+    teamList.forEach((m: any) => {
+      const name = m.name || m.subMemberName || m.traderName || 'Investor';
+      const isMeta = m.id.startsWith('NGK-REF-META-');
+      const amountStr = m.profit || (m.amount !== undefined ? `${m.amount}` : '0');
+      // Clean string of currency symbols and parse
+      const numericAmount = parseFloat(amountStr.toString().replace(/[^\d.]/g, '')) || 0;
+
+      const existing = map.get(name);
+      if (existing) {
+        existing.profit += numericAmount;
+        if (!isMeta && m.timestamp && m.timestamp > existing.timestamp) {
+          existing.timestamp = m.timestamp;
+        }
+      } else {
+        map.set(name, {
+          id: m.id,
+          name: name,
+          date: m.date || (m.timestamp ? new Date(m.timestamp).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) : 'N/A'),
+          profit: numericAmount,
+          active: m.active !== undefined ? m.active : true,
+          level: m.level || 1,
+          timestamp: m.timestamp || new Date().toISOString()
+        });
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  }, [teamList]);
 
   // Generate real dynamic invitation links
   const referralLink = `${window.location.origin}/?ref=${user.referralCode || 'NGK'}`;
@@ -268,32 +309,39 @@ export default function Referral({
             <h4 className="font-bold text-xs text-white uppercase tracking-wider font-mono">Network Sub-Members</h4>
             
             <div className="space-y-2.5">
-              {teamList.length === 0 ? (
+              {uniqueTeamList.length === 0 ? (
                 <div className="text-center py-6 bg-zinc-950/40 rounded-xl border border-zinc-850/50">
                   <p className="text-xs text-zinc-500 font-bold font-mono uppercase tracking-wider">No team sub-members yet</p>
                   <p className="text-[9px] text-zinc-600 mt-1 uppercase font-bold font-mono">Share your promotion link to build your team!</p>
                 </div>
               ) : (
-                teamList.map((m) => (
-                  <div key={m.id} className="flex items-center justify-between bg-zinc-950/40 p-3 rounded-xl border border-zinc-850/50">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-xs font-mono font-black text-white">
-                        {m.name.charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <span className="text-xs font-bold text-white block font-mono">{m.name}</span>
-                        <span className="text-[8px] text-zinc-500 font-mono block mt-0.5">Joined: {m.date} • Level {m.level}</span>
-                      </div>
-                    </div>
+                uniqueTeamList.map((m) => {
+                  const displayName = m.name;
+                  const displayDate = m.date;
+                  const displayProfit = `${m.profit.toFixed(2)} USDT`;
+                  const isMemberActive = m.active;
 
-                    <div className="text-right">
-                      <span className="text-xs font-mono font-bold text-emerald-400">+{m.profit}</span>
-                      <span className={`block text-[7px] font-bold uppercase font-mono tracking-wider mt-0.5 ${m.active ? 'text-emerald-400' : 'text-zinc-500'}`}>
-                        {m.active ? 'Active' : 'Offline'}
-                      </span>
+                  return (
+                    <div key={m.id} className="flex items-center justify-between bg-zinc-950/40 p-3 rounded-xl border border-zinc-850/50">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-xs font-mono font-black text-cyan-400">
+                          {displayName.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <span className="text-xs font-bold text-white block font-mono">{displayName}</span>
+                          <span className="text-[8px] text-zinc-500 font-mono block mt-0.5 font-bold uppercase">Joined: {displayDate} • Level {m.level || 1}</span>
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <span className="text-xs font-mono font-bold text-emerald-400">+{displayProfit}</span>
+                        <span className={`block text-[7px] font-bold uppercase font-mono tracking-wider mt-0.5 ${isMemberActive ? 'text-emerald-400 font-black' : 'text-zinc-500 font-bold'}`}>
+                          {isMemberActive ? 'Active' : 'Offline'}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>

@@ -142,7 +142,7 @@ export default function Profile({
     try {
       // Create TOTP instance
       const totp = new OTPAuth.TOTP({
-        issuer: 'GTX',
+        issuer: 'NGK',
         label: user.email,
         algorithm: 'SHA1',
         digits: 6,
@@ -205,7 +205,7 @@ export default function Profile({
 
   const currentTheme = cardThemes[user.tier] || cardThemes.Gold;
 
-  const otpauthUrl = `otpauth://totp/GTX:${encodeURIComponent(user.username)}?secret=${tempSecret}&issuer=GTX`;
+  const otpauthUrl = `otpauth://totp/NGK:${encodeURIComponent(user.username)}?secret=${tempSecret}&issuer=NGK`;
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&color=09090b&data=${encodeURIComponent(otpauthUrl)}`;
 
   return (
@@ -304,7 +304,7 @@ export default function Profile({
         <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-850/60 flex flex-col justify-between space-y-2">
           <span className="text-zinc-500 text-[9px] font-bold uppercase tracking-wider font-mono">UID / User ID</span>
           <div className="flex items-center justify-between gap-1 mt-1">
-            <span className="text-xs font-bold text-white font-mono truncate">{user.uid.slice(0, 14).toUpperCase()}</span>
+            <span className="text-xs font-bold text-white font-mono truncate">{(user?.uid || '').slice(0, 14).toUpperCase()}</span>
             <button 
               type="button"
               onClick={() => handleCopyText(user.uid, 'uid')}
@@ -320,7 +320,7 @@ export default function Profile({
           <span className="text-zinc-500 text-[9px] font-bold uppercase tracking-wider">System Node</span>
           <div className="flex items-center gap-1.5 mt-1 text-emerald-400 font-bold text-xs uppercase">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span>GTX-GLOBAL</span>
+            <span>NGK-GLOBAL</span>
           </div>
         </div>
       </div>

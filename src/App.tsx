@@ -87,7 +87,7 @@ const INITIAL_TRADERS: Trader[] = [
 
 // Initial Chat Messages to seed the community
 const SEED_CHAT_MESSAGES: ChatMessage[] = [
-  { id: 'c1', userId: 'm1', username: 'CryptoKing', userEmail: 'king@crypto.com', message: 'GTX is paying out insane staking yields today. Already collected 3.6%!', timestamp: new Date(Date.now() - 3600000).toISOString() },
+  { id: 'c1', userId: 'm1', username: 'CryptoKing', userEmail: 'king@crypto.com', message: 'NGK is paying out insane staking yields today. Already collected 3.6%!', timestamp: new Date(Date.now() - 3600000).toISOString() },
   { id: 'c2', userId: 'm2', username: 'WhaleWatcher', userEmail: 'whale@watch.com', message: 'Just mirrored Kieranmoris copy trade with 500 USDT, locked and ready 🚀', timestamp: new Date(Date.now() - 1800000).toISOString() },
   { id: 'c3', userId: 'm3', username: 'TradeWizard', userEmail: 'wizard@trade.com', message: 'Does anyone know the withdrawal limit? Try to withdraw 120 USDT.', timestamp: new Date(Date.now() - 600000).toISOString() },
   { id: 'c4', userId: 'm4', username: 'Satoshi', userEmail: 'sat@btc.com', message: 'wizard@trade.com min is 4 USDT. Works instantly! Verified my KYC yesterday as well.', timestamp: new Date(Date.now() - 300000).toISOString() }
@@ -431,6 +431,9 @@ export default function App() {
               });
 
               showToast(`Copy trade with ${tx.traderName} complete! +$${profit.toFixed(2)} USDT profits added.`, 'success');
+              
+              // Distribute Level 1 and Level 2 profit commissions
+              await distributeProfitCommissions(currentUser.uid, profit);
             }
           }
         }
@@ -514,7 +517,7 @@ export default function App() {
         'Bitcoin is holding solid above 90k, copy trades are highly accurate today!',
         'Just claimed daily bonus streak multipliers. Streak 5 lets go 🔥',
         'Staked another 500 USDT into the AI quantitative pool. Free yields!',
-        'Withdrawal of 45 USDT completed in 3 seconds. GTX does not play!',
+        'Withdrawal of 45 USDT completed in 3 seconds. NGK does not play!',
         'Invite links are yielding massive commissions. Level 1 referral unlocked me 25 USDT reward.',
         'Anyone mirroring Satoshi_AI master profile? Win rate is crazy!'
       ];
@@ -526,7 +529,7 @@ export default function App() {
         await addDoc(collection(db, 'chats'), {
           userId: 'm-' + Math.random().toString(36).substring(2, 5),
           username: rTrader,
-          userEmail: `${rTrader.toLowerCase().replace(' ', '')}@gtx.com`,
+          userEmail: `${rTrader.toLowerCase().replace(' ', '')}@ngk.com`,
           message: rTalk,
           timestamp: new Date().toISOString()
         });
@@ -564,6 +567,17 @@ export default function App() {
     setAuthLoading(true);
 
     try {
+      // Validate invitation code if provided
+      if (authRefCode) {
+        const q = query(collection(db, 'users'), where('referralCode', '==', authRefCode));
+        const querySnapshot = await getDocs(q);
+        if (querySnapshot.empty) {
+          showToast('Invalid invitation code. Please verify or leave it blank.', 'error');
+          setAuthLoading(false);
+          return;
+        }
+      }
+
       // 1. Create firebase auth user with Custom Database fallback for robustness
       let uid = '';
       try {
@@ -652,19 +666,15 @@ export default function App() {
           const parentDoc = querySnapshot.docs[0];
           const parentUid = parentDoc.id;
 
-          // Increment parent's teamCount in Firestore
-          await updateDoc(doc(db, 'users', parentUid), {
-            teamCount: increment(1)
-          });
-
           // Add child metadata to parent's `/team` and `/refers` subcollections
           const refMetaId = 'NGK-REF-META-' + Math.random().toString(36).substring(2, 9).toUpperCase();
           const teamMember = {
             id: refMetaId,
             name: authUsername,
+            childUid: uid,
             date: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
             profit: '0.00 USDT',
-            active: true,
+            active: false, // Inactive until first successful deposit
             level: 1,
             timestamp: new Date().toISOString()
           };
@@ -924,7 +934,7 @@ export default function App() {
         newTier = VIPRank.Silver;
       }
 
-      const txId = 'GTX-CT-' + Math.random().toString(36).substring(2, 9).toUpperCase();
+      const txId = 'NGK-CT-' + Math.random().toString(36).substring(2, 9).toUpperCase();
       const endTime = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 minutes!
 
       const copyTradeTx: Transaction = {
@@ -998,6 +1008,9 @@ export default function App() {
         });
 
         showToast(`Copy trade complete! +$${profit.toFixed(2)} USDT profits added.`, 'success');
+        
+        // Distribute Level 1 and Level 2 profit commissions
+        await distributeProfitCommissions(currentUser.uid, profit);
       }
     } catch (err) {
       console.error(err);
@@ -1015,7 +1028,7 @@ export default function App() {
 
     try {
       const totp = new OTPAuth.TOTP({
-        issuer: 'GTX',
+        issuer: 'NGK',
         label: currentUser.email,
         algorithm: 'SHA1',
         digits: 6,
@@ -1061,11 +1074,102 @@ export default function App() {
       });
 
       showToast(`2FA Verified! +$${profit.toFixed(2)} USDT released to your main balance!`, 'success');
+      
+      // Distribute Level 1 and Level 2 profit commissions
+      await distributeProfitCommissions(currentUser.uid, profit);
+      
       return true;
     } catch (err) {
       console.error(err);
       showToast('Error verifying security authenticator.', 'error');
       return false;
+    }
+  };
+
+  // Reusable helper to distribute profit commissions to inviters (5% Level 1, 3% Level 2)
+  const distributeProfitCommissions = async (childUid: string, profitAmount: number) => {
+    try {
+      const childDocRef = doc(db, 'users', childUid);
+      const childSnap = await getDoc(childDocRef);
+      if (!childSnap.exists()) return;
+      const childObj = childSnap.data();
+
+      // Check Level 1 Direct Referral (5%)
+      if (childObj.invitedBy) {
+        const parent1Query = query(collection(db, 'users'), where('referralCode', '==', childObj.invitedBy));
+        const parent1Snap = await getDocs(parent1Query);
+        if (!parent1Snap.empty) {
+          const parent1Doc = parent1Snap.docs[0];
+          const parent1Uid = parent1Doc.id;
+          const parent1Obj = parent1Doc.data();
+          const commission1 = profitAmount * 0.05; // 5% Level 1 Direct commission on profit
+
+          if (commission1 > 0) {
+            await updateDoc(doc(db, 'users', parent1Uid), {
+              mainBalance: increment(commission1),
+              totalCommission: increment(commission1)
+            });
+
+            const txId1 = 'NGK-COMM1-' + Math.random().toString(36).substring(2, 9).toUpperCase();
+            const commTx1 = {
+              id: txId1,
+              userId: parent1Uid,
+              type: TransactionType.Commission,
+              amount: commission1,
+              status: TransactionStatus.Success,
+              timestamp: new Date().toISOString(),
+              traderName: `Level 1 Ref Profit: ${childObj.username || 'Investor'}`
+            };
+
+            await setDoc(doc(db, 'users', parent1Uid, 'transactions', txId1), commTx1);
+            await setDoc(doc(db, 'users', parent1Uid, 'refers', txId1), {
+              ...commTx1,
+              subMemberName: childObj.username || 'Investor',
+              level: 1,
+              profit: commission1
+            });
+          }
+
+          // Check Level 2 Indirect Referral (3%)
+          if (parent1Obj.invitedBy) {
+            const parent2Query = query(collection(db, 'users'), where('referralCode', '==', parent1Obj.invitedBy));
+            const parent2Snap = await getDocs(parent2Query);
+            if (!parent2Snap.empty) {
+              const parent2Doc = parent2Snap.docs[0];
+              const parent2Uid = parent2Doc.id;
+              const commission2 = profitAmount * 0.03; // 3% Level 2 Indirect commission on profit
+
+              if (commission2 > 0) {
+                await updateDoc(doc(db, 'users', parent2Uid), {
+                  mainBalance: increment(commission2),
+                  totalCommission: increment(commission2)
+                });
+
+                const txId2 = 'NGK-COMM2-' + Math.random().toString(36).substring(2, 9).toUpperCase();
+                const commTx2 = {
+                  id: txId2,
+                  userId: parent2Uid,
+                  type: TransactionType.Commission,
+                  amount: commission2,
+                  status: TransactionStatus.Success,
+                  timestamp: new Date().toISOString(),
+                  traderName: `Level 2 Ref Profit: ${childObj.username || 'Investor'}`
+                };
+
+                await setDoc(doc(db, 'users', parent2Uid, 'transactions', txId2), commTx2);
+                await setDoc(doc(db, 'users', parent2Uid, 'refers', txId2), {
+                  ...commTx2,
+                  subMemberName: childObj.username || 'Investor',
+                  level: 2,
+                  profit: commission2
+                });
+              }
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error distributing profit commissions:', err);
     }
   };
 
@@ -1095,7 +1199,7 @@ export default function App() {
 
       await setDoc(doc(db, 'users', currentUser.uid, 'stakes', stakeId), newStake);
 
-      const stakeTxId = 'GTX-STAKE-' + Math.random().toString(36).substring(2, 9).toUpperCase();
+      const stakeTxId = 'NGK-STAKE-' + Math.random().toString(36).substring(2, 9).toUpperCase();
       const stakeTx: Transaction = {
         id: stakeTxId,
         userId: currentUser.uid,
@@ -1727,13 +1831,15 @@ export default function App() {
         ) : (
           // ================================== MAIN CORE WORKSPACE ==================================
           <>
-            <Header 
-              user={currentUser} 
-              onNavigate={(screen) => setCurrentScreen(screen)} 
-              unreadChatCount={unreadChatCount} 
-            />
+            {currentScreen !== 'admin' && currentScreen !== 'support' && (
+              <Header 
+                user={currentUser} 
+                onNavigate={(screen) => setCurrentScreen(screen)} 
+                unreadChatCount={unreadChatCount} 
+              />
+            )}
 
-            <main className="flex-1 overflow-y-auto pt-3">
+            <main className={`flex-1 pt-3 ${currentScreen === 'user-support' || currentScreen === 'support' ? 'overflow-hidden flex flex-col h-full min-h-0' : 'overflow-y-auto'}`}>
               <AnimatePresence mode="wait">
                 {currentScreen === 'dashboard' && (
                   <div key="dashboard">
@@ -1752,7 +1858,7 @@ export default function App() {
                         setWithdrawOpen(true);
                       }}
                       onClaimBonus={handleClaimDailyBonus}
-                      activeTrades={transactions.filter(t => t.status === TransactionStatus.Pending || t.status === TransactionStatus.Hold)}
+                      activeTrades={transactions.filter(t => t.type === TransactionType.CopyTrade && (t.status === TransactionStatus.Pending || t.status === TransactionStatus.Hold))}
                       activeStakeAmount={activeStake ? activeStake.amount : 0}
                       onReleaseTrade={handleReleaseTrade}
                     />
@@ -1780,7 +1886,7 @@ export default function App() {
                       user={currentUser}
                       onNavigate={(screen) => setCurrentScreen(screen)}
                       traders={INITIAL_TRADERS}
-                      activeTrades={transactions.filter(t => t.status === TransactionStatus.Pending || t.status === TransactionStatus.Hold)}
+                      activeTrades={transactions.filter(t => t.type === TransactionType.CopyTrade && (t.status === TransactionStatus.Pending || t.status === TransactionStatus.Hold))}
                       onStartCopyTrade={handleStartCopyTrade}
                       onReleaseTrade={handleReleaseTrade}
                       onInstantSettleTrade={handleInstantSettleTrade}
@@ -1828,7 +1934,7 @@ export default function App() {
                 )}
 
                 {currentScreen === 'support' && (
-                  <div key="support">
+                  <div key="support" className="flex-1 flex flex-col h-full min-h-0">
                     <AgentSupportPanel 
                       onNavigate={(screen) => setCurrentScreen(screen)} 
                       showToast={showToast}
@@ -1837,7 +1943,7 @@ export default function App() {
                 )}
 
                 {currentScreen === 'user-support' && (
-                  <div key="user-support">
+                  <div key="user-support" className="flex-1 flex flex-col h-full min-h-0">
                     <Support 
                       user={currentUser!}
                       onNavigate={(screen) => setCurrentScreen(screen)} 
@@ -1945,10 +2051,12 @@ export default function App() {
             </main>
 
             {/* Bottom Global Navigation */}
-            <Navbar 
-              currentScreen={currentScreen} 
-              onNavigate={(screen) => setCurrentScreen(screen)} 
-            />
+            {currentScreen !== 'admin' && currentScreen !== 'support' && (
+              <Navbar 
+                currentScreen={currentScreen} 
+                onNavigate={(screen) => setCurrentScreen(screen)} 
+              />
+            )}
           </>
         )}
 
@@ -1988,12 +2096,34 @@ export default function App() {
                           <div
                             key={net}
                             onClick={() => setDepositNetwork(net)}
-                            className={`border rounded p-3.5 text-center cursor-pointer transition ${
+                            className={`border rounded-xl p-3 text-center cursor-pointer flex flex-col items-center justify-center transition duration-200 ${
                               isSel 
                                 ? 'border-cyan-500 bg-cyan-950/30 text-cyan-400 font-bold' 
                                 : 'border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-400'
                             }`}
                           >
+                            {net === 'BEP20' && (
+                              <svg className="w-5 h-5 mb-1.5 shrink-0" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 2L16.24 6.24L12 10.48L7.76 6.24L12 2Z" fill="#F3BA2F"/>
+                                <path d="M12 13.52L16.24 17.76L12 22L7.76 17.76L12 13.52Z" fill="#F3BA2F"/>
+                                <path d="M22 12L17.76 16.24L13.52 12L17.76 7.76L22 12Z" fill="#F3BA2F"/>
+                                <path d="M10.48 12L6.24 16.24L2 12L6.24 7.76L10.48 12Z" fill="#F3BA2F"/>
+                                <path d="M12 8.59L15.41 12L12 15.41L8.59 12L12 8.59Z" fill="#F3BA2F"/>
+                              </svg>
+                            )}
+                            {net === 'TRC20' && (
+                              <svg className="w-5 h-5 mb-1.5 shrink-0" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M22 6L11 2L2 9L10 22L22 6ZM10.5 5.5L17 8L6.5 11.5L10.5 5.5ZM9 13.5L5.5 11L10 18.5L9 13.5ZM12.5 17L18.5 8.5L11.5 13L12.5 17Z" fill="#EF0027"/>
+                              </svg>
+                            )}
+                            {net === 'ERC20' && (
+                              <svg className="w-5 h-5 mb-1.5 shrink-0" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 2L4.5 12L12 16.5L19.5 12L12 2Z" fill="#627EEA"/>
+                                <path d="M12 2L12 16.5L19.5 12L12 2Z" fill="#455A9F"/>
+                                <path d="M12 18L4.5 13.5L12 22L12 18Z" fill="#627EEA"/>
+                                <path d="M12 18L12 22L19.5 13.5L12 18Z" fill="#455A9F"/>
+                              </svg>
+                            )}
                             <span className="block text-xs uppercase font-bold font-mono">{net}</span>
                             <span className="text-[8px] text-zinc-500 block mt-0.5">
                               {net === 'BEP20' ? 'Binance' : net === 'TRC20' ? 'TRON' : 'Ethereum'}
