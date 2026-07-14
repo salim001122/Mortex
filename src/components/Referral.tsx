@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   ArrowLeft, 
   Users, 
@@ -16,6 +16,18 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { User } from '../types';
+import { db } from '../firebase';
+import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
+
+interface TeamMember {
+  id: string;
+  name: string;
+  date: string;
+  profit: string;
+  active: boolean;
+  level: number;
+  timestamp: string;
+}
 
 interface ReferralProps {
   user: User;
@@ -30,9 +42,30 @@ export default function Referral({
 }: ReferralProps) {
   const [copied, setCopied] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState<'invite' | 'agent' | 'incentives'>('invite');
+  const [teamList, setTeamList] = useState<TeamMember[]>([]);
+
+  // Fetch referred team members in real-time from Firestore
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    const refersRef = collection(db, 'users', user.uid, 'refers');
+    const qRefers = query(refersRef, orderBy('timestamp', 'desc'));
+    
+    const unsubscribe = onSnapshot(qRefers, (snapshot) => {
+      const members: TeamMember[] = [];
+      snapshot.forEach((doc) => {
+        members.push({ id: doc.id, ...doc.data() } as TeamMember);
+      });
+      setTeamList(members);
+    }, (error) => {
+      console.error("Error fetching referred team members:", error);
+    });
+
+    return () => unsubscribe();
+  }, [user?.uid]);
 
   // Generate real dynamic invitation links
-  const referralLink = `${window.location.origin}/?ref=${user.referralCode || 'GTX'}`;
+  const referralLink = `${window.location.origin}/?ref=${user.referralCode || 'NGK'}`;
   
   // Real dynamic, instantly scannable QR Code using QR Server API
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&color=083344&bgcolor=ffffff&data=${encodeURIComponent(referralLink)}`;
@@ -46,13 +79,6 @@ export default function Referral({
 
   const nextMilestone = 5;
   const progressPercent = Math.min(((user.teamCount || 0) / nextMilestone) * 100, 100);
-
-  // Simulated active referrers lists
-  const referredTeamList = [
-    { name: 'Krypto_Whale88', date: 'Jul 10, 2026', profit: '25.00 USDT', active: true, level: 1 },
-    { name: 'SatoshiMind', date: 'Jul 09, 2026', profit: '7.50 USDT', active: true, level: 1 },
-    { name: 'AlphaTradeX', date: 'Jul 08, 2026', profit: '0.00 USDT', active: false, level: 1 }
-  ];
 
   // Referral Deposit Rewards Table Data from Image 3
   const depositRewardsTable = [
@@ -98,7 +124,7 @@ export default function Referral({
           <ArrowLeft size={18} />
         </button>
         <div>
-          <h2 className="text-sm font-bold text-white tracking-wide uppercase">GTX Affiliate Center</h2>
+          <h2 className="text-sm font-bold text-white tracking-wide uppercase">NGK Affiliate Center</h2>
           <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider font-mono">Incentive Levels &amp; Commissions</p>
         </div>
       </div>
@@ -159,7 +185,7 @@ export default function Referral({
 
             {/* Copy referral links */}
             <div className="space-y-2">
-              <label className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider font-mono block">Your GTX Promotion Link</label>
+              <label className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider font-mono block">Your NGK Promotion Link</label>
               <div className="flex items-center gap-2.5 bg-zinc-950 border border-zinc-850 rounded-xl p-2 pl-3.5 shadow-inner">
                 <Link size={14} className="text-cyan-400 shrink-0" />
                 <span className="text-xs text-zinc-300 truncate font-mono select-all flex-1">
@@ -242,26 +268,33 @@ export default function Referral({
             <h4 className="font-bold text-xs text-white uppercase tracking-wider font-mono">Network Sub-Members</h4>
             
             <div className="space-y-2.5">
-              {referredTeamList.map((m, idx) => (
-                <div key={idx} className="flex items-center justify-between bg-zinc-950/40 p-3 rounded-xl border border-zinc-850/50">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-xs font-mono font-black text-white">
-                      {m.name.charAt(0)}
-                    </div>
-                    <div>
-                      <span className="text-xs font-bold text-white block font-mono">{m.name}</span>
-                      <span className="text-[8px] text-zinc-500 font-mono block mt-0.5">Joined: {m.date} • Level {m.level}</span>
-                    </div>
-                  </div>
-
-                  <div className="text-right">
-                    <span className="text-xs font-mono font-bold text-emerald-400">+{m.profit}</span>
-                    <span className={`block text-[7px] font-bold uppercase font-mono tracking-wider mt-0.5 ${m.active ? 'text-emerald-400' : 'text-zinc-500'}`}>
-                      {m.active ? 'Active' : 'Offline'}
-                    </span>
-                  </div>
+              {teamList.length === 0 ? (
+                <div className="text-center py-6 bg-zinc-950/40 rounded-xl border border-zinc-850/50">
+                  <p className="text-xs text-zinc-500 font-bold font-mono uppercase tracking-wider">No team sub-members yet</p>
+                  <p className="text-[9px] text-zinc-600 mt-1 uppercase font-bold font-mono">Share your promotion link to build your team!</p>
                 </div>
-              ))}
+              ) : (
+                teamList.map((m) => (
+                  <div key={m.id} className="flex items-center justify-between bg-zinc-950/40 p-3 rounded-xl border border-zinc-850/50">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-xs font-mono font-black text-white">
+                        {m.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <span className="text-xs font-bold text-white block font-mono">{m.name}</span>
+                        <span className="text-[8px] text-zinc-500 font-mono block mt-0.5">Joined: {m.date} • Level {m.level}</span>
+                      </div>
+                    </div>
+
+                    <div className="text-right">
+                      <span className="text-xs font-mono font-bold text-emerald-400">+{m.profit}</span>
+                      <span className={`block text-[7px] font-bold uppercase font-mono tracking-wider mt-0.5 ${m.active ? 'text-emerald-400' : 'text-zinc-500'}`}>
+                        {m.active ? 'Active' : 'Offline'}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -368,7 +401,7 @@ export default function Referral({
               </div>
               <div className="flex items-start gap-1.5">
                 <CheckCircle2 size={11} className="text-cyan-400 shrink-0 mt-0.5" />
-                <p>Birthday Reward: Active LV1 agents and above are eligible for a 100 USDT annual GTX Consortium allowance.</p>
+                <p>Birthday Reward: Active LV1 agents and above are eligible for a 100 USDT annual NGK Consortium allowance.</p>
               </div>
             </div>
           </div>

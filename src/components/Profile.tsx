@@ -23,7 +23,7 @@ import {
   Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { User } from '../types';
+import { User, VIPRank } from '../types';
 import * as OTPAuth from 'otpauth';
 
 interface ProfileProps {
@@ -234,10 +234,15 @@ export default function Profile({
             <img src={avatarUrl} alt="User Avatar" className="w-full h-full rounded-full object-cover" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-sm font-bold text-white truncate">{user.username}</span>
               {user.kycStatus === 'verified' && (
                 <ShieldCheck size={14} className="text-emerald-400 shrink-0" />
+              )}
+              {user.tier !== VIPRank.Bronze && (
+                <span className="inline-flex items-center gap-0.5 bg-gradient-to-r from-amber-400 to-yellow-500 text-zinc-950 text-[8px] font-extrabold px-1.5 py-0.5 rounded shadow-sm border border-yellow-300/50 uppercase tracking-widest animate-pulse">
+                  👑 VIP
+                </span>
               )}
             </div>
             <span className="text-xs text-zinc-400 truncate block mt-0.5">{user.email}</span>
@@ -402,6 +407,24 @@ export default function Profile({
         </div>
 
 
+
+        {/* Chat Support Action */}
+        <button 
+          id="profile-support-btn"
+          onClick={onShowSupport}
+          className="w-full bg-cyan-500/5 hover:bg-cyan-500/10 border border-cyan-500/20 rounded-2xl p-4 flex items-center justify-between cursor-pointer transition duration-200"
+        >
+          <div className="flex items-center gap-3.5 text-left">
+            <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shadow-sm">
+              <HelpCircle size={15} />
+            </div>
+            <div className="space-y-0.5">
+              <span className="text-xs font-bold text-cyan-400 uppercase tracking-wide font-mono block">Support Center</span>
+              <p className="text-[10px] text-zinc-500 font-mono block">Chat with live 24/7 support agents</p>
+            </div>
+          </div>
+          <ChevronRight size={13} className="text-cyan-400" />
+        </button>
 
         {/* Logout Action */}
         <button 

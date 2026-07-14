@@ -50,6 +50,7 @@ import Profile from './components/Profile';
 import History from './components/History';
 import Support from './components/Support';
 import AdminPanel from './components/AdminPanel';
+import AgentSupportPanel from './components/AgentSupportPanel';
 
 // Firebase imports
 import { auth, db } from './firebase';
@@ -120,6 +121,7 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState<boolean>(false);
   const [depositLoading, setDepositLoading] = useState<boolean>(false);
   const [withdrawLoading, setWithdrawLoading] = useState<boolean>(false);
+  const [isClaimingBonus, setIsClaimingBonus] = useState<boolean>(false);
 
   // Core App states
   const [activeUid, setActiveUid] = useState<string | null>(null);
@@ -813,11 +815,47 @@ export default function App() {
   // Claim streak bonus
   const handleClaimDailyBonus = async () => {
     if (!currentUser) return;
-    const streak = currentUser.loginStreak + 1;
-    const reward = streak * 0.15;
+    if (isClaimingBonus) return;
+
+    setIsClaimingBonus(true);
 
     try {
-      const txId = 'GTX-STREAK-' + Math.random().toString(36).substring(2, 9).toUpperCase();
+      // 1. Enforce active deposit restriction: at least one successful deposit
+      const txsRef = collection(db, 'users', currentUser.uid, 'transactions');
+      const qDeposit = query(
+        txsRef, 
+        where('type', '==', TransactionType.Deposit), 
+        where('status', '==', TransactionStatus.Success)
+      );
+      const depositSnap = await getDocs(qDeposit);
+      if (depositSnap.empty) {
+        showToast("Access Denied: Only users with a successful deposit history can claim the daily bonus.", "error");
+        setIsClaimingBonus(false);
+        return;
+      }
+
+      // 2. Check already claimed today
+      let streak = 1;
+      if (currentUser.lastBonusClaim) {
+        const lastClaimDate = new Date(currentUser.lastBonusClaim);
+        const diffMs = Date.now() - lastClaimDate.getTime();
+        const diffHours = diffMs / (1000 * 60 * 60);
+
+        if (diffHours < 24) {
+          showToast("You have already claimed your daily bonus today!", "warning");
+          setIsClaimingBonus(false);
+          return;
+        } else if (diffHours < 48) {
+          streak = (currentUser.loginStreak || 0) + 1;
+        } else {
+          streak = 1; // Reset streak if missed a day
+        }
+      }
+
+      // 3. Perfect reward scaling (0.1 USDT on 1st day, 0.2 USDT on 2nd, etc.)
+      const reward = streak * 0.10;
+
+      const txId = 'NGK-STREAK-' + Math.random().toString(36).substring(2, 9).toUpperCase();
       const bonusTx: Transaction = {
         id: txId,
         userId: currentUser.uid,
@@ -839,6 +877,9 @@ export default function App() {
       showToast(`+$${reward.toFixed(2)} USDT Daily Claim added! Streak: ${streak} Days`, 'success');
     } catch (err) {
       console.error(err);
+      showToast("Error processing daily claim. Please try again.", "error");
+    } finally {
+      setIsClaimingBonus(false);
     }
   };
 
@@ -1767,7 +1808,7 @@ export default function App() {
                       onUpdate2FA={handleUpdate2FA}
                       onUpdatePassword={handleUpdatePassword}
                       onLogout={handleLogout}
-                      onShowSupport={() => setCurrentScreen('support')}
+                      onShowSupport={() => setCurrentScreen('user-support')}
                       onShowToast={showToast}
                       onUpdateAvatar={handleUpdateAvatar}
                     />
@@ -1788,7 +1829,17 @@ export default function App() {
 
                 {currentScreen === 'support' && (
                   <div key="support">
+                    <AgentSupportPanel 
+                      onNavigate={(screen) => setCurrentScreen(screen)} 
+                      showToast={showToast}
+                    />
+                  </div>
+                )}
+
+                {currentScreen === 'user-support' && (
+                  <div key="user-support">
                     <Support 
+                      user={currentUser!}
                       onNavigate={(screen) => setCurrentScreen(screen)} 
                     />
                   </div>
