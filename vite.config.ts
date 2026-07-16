@@ -5,7 +5,7 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
-    base: '/', // 👈 Ye line yahan lazmi add karein
+    base: './', // 👈 Isay yahan './' (dot slash) kar dein taake path ka masla bilkul khatam ho jaye
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
@@ -18,4 +18,3 @@ export default defineConfig(() => {
     },
   };
 });
-
