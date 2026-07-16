@@ -234,15 +234,15 @@ export default function Profile({
       const messageText = `🔔 <b>NGK Signal System Connection Verified!</b>\n\nHello @${cleanUsername},\n\nYour Telegram account is now successfully synced with the NGK node system. You will receive active copy trading alerts and reminders at your configured session time:\n\n⏱ <b>UK Time: ${timeLabel}</b>\n\nGet ready to deploy your licenses! 🚀`;
 
       if (botToken) {
-        const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+        const response = await fetch('/api/telegram-proxy', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            chat_id: cleanChatId,
-            text: messageText,
-            parse_mode: 'HTML'
+            botToken: botToken,
+            chatId: cleanChatId,
+            text: messageText
           })
         });
         
@@ -257,11 +257,7 @@ export default function Profile({
       }
     } catch (err: any) {
       console.error(err);
-      if (err?.message?.includes('fetch') || String(err).includes('TypeError')) {
-        onShowToast('CORS/Sandbox limit detected! Please open the app in a New Tab to send live Telegram alerts.', 'warning');
-      } else {
-        onShowToast('Failed to trigger Telegram alert. Check your network or Chat ID.', 'error');
-      }
+      onShowToast('Failed to trigger Telegram alert. Check your network or Chat ID.', 'error');
     } finally {
       setIsTestingAlert(false);
     }
@@ -299,13 +295,13 @@ export default function Profile({
           const welcomeMessage = `🎉 <b>Welcome to @NGK_Signalbot!</b>\n\nHello @${cleanUsername},\n\nYour account has been <b>Successfully Connected</b> to the NGK cryptographic node signal system! 🚀\n\n⚙️ <b>Your Subscribed Schedule:</b>\n⏱ <b>UK Time: ${timeLabel}</b>\n\nWhenever a signal or session reminder is broadcasted by the nodes, you will get instant alerts directly here. Happy Copy-Trading! 📈`;
 
           try {
-            const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            const response = await fetch('/api/telegram-proxy', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                chat_id: cleanChatId,
-                text: welcomeMessage,
-                parse_mode: 'HTML'
+                botToken: botToken,
+                chatId: cleanChatId,
+                text: welcomeMessage
               })
             });
             const resData = await response.json();
@@ -316,9 +312,6 @@ export default function Profile({
             }
           } catch (sendErr: any) {
             console.warn("Failed to deliver Telegram welcome alert:", sendErr);
-            if (sendErr?.message?.includes('fetch') || String(sendErr).includes('TypeError')) {
-              onShowToast('Saved! Note: Telegram testing requires opening the app in a New Tab due to Preview frame browser security.', 'info');
-            }
           }
         }
       }

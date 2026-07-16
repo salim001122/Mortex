@@ -175,13 +175,13 @@ export default function AdminPanel({ onNavigate, currentUser, showToast }: Admin
                   const directionLabel = signalDir === 'BULLISH' ? '🟢 BULLISH (BUY / CALL)' : '🔴 BEARISH (SELL / PUT)';
                   const messageText = `⚡ <b>NEW VIP COPY-TRADE SIGNAL BROADCASTED!</b>\n\n🎯 <b>Asset Pair:</b> ${signalPair}\n📈 <b>Bias Direction:</b> ${directionLabel}\n⏱ <b>Active Window:</b> 1 Hour (Settle in 30m)\n\nDear @${tgUser.username}, the UK-scheduled nodes are active. Deploy your licenses immediately to capitalize on this trade! 🚀`;
 
-                  const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+                  const res = await fetch('/api/telegram-proxy', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                      chat_id: tgUser.chatId,
-                      text: messageText,
-                      parse_mode: 'HTML'
+                      botToken: botToken,
+                      chatId: tgUser.chatId,
+                      text: messageText
                     })
                   });
                   const resData = await res.json();
