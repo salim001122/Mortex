@@ -134,6 +134,11 @@ export default function App() {
   const [newChatMessage, setNewChatMessage] = useState<string>('');
   const [unreadChatCount, setUnreadChatCount] = useState<number>(3);
 
+  // 2FA Security states for current logged in session
+  const [sessionTwoFaVerified, setSessionTwoFaVerified] = useState<boolean>(false);
+  const [loginTwoFaCode, setLoginTwoFaCode] = useState<string>('');
+  const [isVerifyingLogin2Fa, setIsVerifyingLogin2Fa] = useState<boolean>(false);
+
   // Admin secure gate states
   const [adminGateEmail, setAdminGateEmail] = useState<string>('admin@gmail.com');
   const [adminGatePassword, setAdminGatePassword] = useState<string>('');
@@ -263,6 +268,26 @@ export default function App() {
       window.removeEventListener('hashchange', handleUrlRouting);
     };
   }, [currentScreen]);
+
+  // Pre-seed user's Telegram Bot Token
+  useEffect(() => {
+    const seedTelegramConfig = async () => {
+      try {
+        const docRef = doc(db, 'system', 'telegram_config');
+        const snap = await getDoc(docRef);
+        if (!snap.exists() || snap.data()?.botToken !== '8719761017:AAF-MI0AJu9cC-drfoHciDucr6fIxhJl4UQ') {
+          await setDoc(docRef, {
+            botToken: '8719761017:AAF-MI0AJu9cC-drfoHciDucr6fIxhJl4UQ',
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+          console.log("Pre-seeded user's Telegram Bot Token successfully.");
+        }
+      } catch (err) {
+        console.error("Error seeding Telegram bot config:", err);
+      }
+    };
+    seedTelegramConfig();
+  }, []);
 
   // 2. Synchronize URL, Chats, and Authentication status on boot
   useEffect(() => {
@@ -846,11 +871,56 @@ export default function App() {
       await signOut(auth);
       localStorage.removeItem('ngk_fallback_uid');
       setActiveUid(null);
+      setSessionTwoFaVerified(false);
+      setLoginTwoFaCode('');
       showToast('Successfully signed out of secure session.', 'info');
       setCurrentScreen('dashboard');
     } catch (err) {
       console.error(err);
       showToast('Sign out failed.', 'error');
+    }
+  };
+
+  const handleVerifyLogin2Fa = async () => {
+    if (!currentUser) return;
+    if (!currentUser.twoFactorSecret) {
+      setSessionTwoFaVerified(true);
+      return;
+    }
+
+    if (!loginTwoFaCode.trim()) {
+      showToast('Please enter your 2FA authenticator code.', 'error');
+      return;
+    }
+
+    setIsVerifyingLogin2Fa(true);
+    try {
+      const totp = new OTPAuth.TOTP({
+        issuer: 'NGK',
+        label: currentUser.email,
+        algorithm: 'SHA1',
+        digits: 6,
+        period: 30,
+        secret: currentUser.twoFactorSecret
+      });
+
+      const delta = totp.validate({
+        token: loginTwoFaCode.trim(),
+        window: 2
+      });
+
+      if (delta !== null) {
+        setSessionTwoFaVerified(true);
+        showToast('Google 2FA security verification success!', 'success');
+        setLoginTwoFaCode('');
+      } else {
+        showToast('Invalid 2FA Google Authenticator code!', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to verify Authenticator code.', 'error');
+    } finally {
+      setIsVerifyingLogin2Fa(false);
     }
   };
 
@@ -1922,6 +1992,79 @@ export default function App() {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        ) : (currentUser.twoFactorEnabled && !sessionTwoFaVerified) ? (
+          // ================================== Google 2FA Verification Page ==================================
+          <div className="flex-1 flex flex-col justify-center px-6 py-12 relative font-mono text-center space-y-6">
+            <div className="text-center space-y-3">
+              <div className="mx-auto w-16 h-16 rounded-full bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shadow-lg">
+                <Shield size={28} className="animate-pulse" />
+              </div>
+              <div className="space-y-1.5">
+                <h1 className="text-xl font-black text-white tracking-widest uppercase">
+                  2FA SECURITY CORE
+                </h1>
+                <p className="text-[10px] text-zinc-400 uppercase tracking-widest font-bold">
+                  Google Authenticator Verification Required
+                </p>
+              </div>
+            </div>
+
+            <div className="coding-card rounded-2xl p-6 shadow-2xl relative overflow-hidden text-left space-y-5 max-w-sm mx-auto w-full">
+              <div className="space-y-1">
+                <h2 className="text-xs font-bold text-white uppercase tracking-wider">Two-Factor Code</h2>
+                <p className="text-[9px] text-zinc-500 leading-normal">
+                  Open your Google Authenticator app on your mobile device to retrieve your 6-digit verification code.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-500">
+                    <Lock size={15} />
+                  </div>
+                  <input 
+                    id="login-2fa-input"
+                    type="text" 
+                    maxLength={6}
+                    placeholder="Enter 6-digit code"
+                    value={loginTwoFaCode}
+                    onChange={(e) => setLoginTwoFaCode(e.target.value.replace(/\D/g, ''))}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleVerifyLogin2Fa();
+                    }}
+                    className="w-full bg-zinc-950 border border-zinc-850 rounded-xl pl-10 pr-4 py-3 text-sm text-center tracking-widest text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/20 font-mono transition duration-200 font-bold"
+                  />
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleLogout}
+                    className="flex-1 bg-zinc-950 hover:bg-zinc-900 text-zinc-400 hover:text-white font-bold py-3 rounded-xl text-xs uppercase tracking-wider text-center transition border border-zinc-850 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    id="confirm-login-2fa-btn"
+                    onClick={handleVerifyLogin2Fa}
+                    disabled={isVerifyingLogin2Fa}
+                    className={`flex-1 font-black py-3 rounded-xl text-xs uppercase tracking-wider text-center transition duration-200 shadow-lg flex items-center justify-center gap-1.5 cursor-pointer ${
+                      isVerifyingLogin2Fa 
+                        ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed border border-zinc-850' 
+                        : 'bg-cyan-500 hover:bg-cyan-400 text-zinc-950 shadow-cyan-500/10'
+                    }`}
+                  >
+                    {isVerifyingLogin2Fa ? 'Verifying...' : 'Confirm'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="text-center">
+              <p className="text-[9px] text-zinc-650 font-bold uppercase tracking-wider">
+                NGK Cryptographic Node Security System
+              </p>
             </div>
           </div>
         ) : (

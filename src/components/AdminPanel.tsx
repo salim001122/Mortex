@@ -94,6 +94,42 @@ export default function AdminPanel({ onNavigate, currentUser, showToast }: Admin
     return () => unsubTrades();
   }, []);
 
+  // Telegram Bot States inside Admin Panel
+  const [telegramBotToken, setTelegramBotToken] = useState('');
+  const [notifyOnTelegram, setNotifyOnTelegram] = useState(true);
+  const [isSavingToken, setIsSavingToken] = useState(false);
+
+  // Load Telegram bot config on mount
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const snap = await getDoc(doc(db, 'system', 'telegram_config'));
+        if (snap.exists()) {
+          setTelegramBotToken(snap.data().botToken || '');
+        }
+      } catch (err) {
+        console.error("Error loading telegram config:", err);
+      }
+    };
+    fetchConfig();
+  }, []);
+
+  const handleSaveBotToken = async () => {
+    setIsSavingToken(true);
+    try {
+      await setDoc(doc(db, 'system', 'telegram_config'), {
+        botToken: telegramBotToken.trim(),
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      showToast('Global Telegram Bot Token saved successfully!', 'success');
+    } catch (err) {
+      console.error("Error saving bot token:", err);
+      showToast('Failed to save Telegram Bot Token.', 'error');
+    } finally {
+      setIsSavingToken(false);
+    }
+  };
+
   // Action: Broadcast VIP Signal
   const handleBroadcastSignal = async () => {
     try {
@@ -112,6 +148,60 @@ export default function AdminPanel({ onNavigate, currentUser, showToast }: Admin
       });
 
       showToast(`VIP Signal broadcasted successfully! Active for 1 hour.`, 'success');
+
+      // Dispatch real-time Telegram alert notification to connected subscribers
+      if (notifyOnTelegram) {
+        const botToken = telegramBotToken.trim();
+        if (botToken) {
+          try {
+            const usersSnap = await getDocs(collection(db, 'users'));
+            const connectedUsers: { chatId: string; username: string }[] = [];
+            usersSnap.forEach((userDoc) => {
+              const uData = userDoc.data();
+              if (uData.telegramChatId && uData.telegramAlertsActive) {
+                connectedUsers.push({
+                  chatId: uData.telegramChatId,
+                  username: uData.telegramUsername || 'Investor'
+                });
+              }
+            });
+
+            if (connectedUsers.length > 0) {
+              showToast(`Dispatching alerts to ${connectedUsers.length} connected Telegram users...`, 'info');
+              
+              let successCount = 0;
+              for (const tgUser of connectedUsers) {
+                try {
+                  const directionLabel = signalDir === 'BULLISH' ? '🟢 BULLISH (BUY / CALL)' : '🔴 BEARISH (SELL / PUT)';
+                  const messageText = `⚡ <b>NEW VIP COPY-TRADE SIGNAL BROADCASTED!</b>\n\n🎯 <b>Asset Pair:</b> ${signalPair}\n📈 <b>Bias Direction:</b> ${directionLabel}\n⏱ <b>Active Window:</b> 1 Hour (Settle in 30m)\n\nDear @${tgUser.username}, the UK-scheduled nodes are active. Deploy your licenses immediately to capitalize on this trade! 🚀`;
+
+                  const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      chat_id: tgUser.chatId,
+                      text: messageText,
+                      parse_mode: 'HTML'
+                    })
+                  });
+                  const resData = await res.json();
+                  if (resData.ok) successCount++;
+                } catch (sendErr) {
+                  console.error("Error sending signal alert to Telegram user:", tgUser.chatId, sendErr);
+                }
+              }
+              showToast(`Telegram Broadcast Complete: ${successCount}/${connectedUsers.length} alerts delivered.`, 'success');
+            } else {
+              showToast("No active connected Telegram users found.", "info");
+            }
+          } catch (fetchErr) {
+            console.error("Error dispatching Telegram alerts:", fetchErr);
+            showToast("Failed to fetch subscribed Telegram users.", "warning");
+          }
+        } else {
+          showToast("Telegram Bot Token is empty. Alert delivery skipped.", "warning");
+        }
+      }
     } catch (err) {
       console.error("Error broadcasting signal:", err);
       showToast("Failed to broadcast VIP signal.", "error");
@@ -466,6 +556,45 @@ export default function AdminPanel({ onNavigate, currentUser, showToast }: Admin
               )}
             </div>
           </div>
+        </div>
+
+        {/* Telegram Integration Controls inside Admin Panel */}
+        <div className="border-t border-zinc-800/85 pt-3.5 space-y-3 font-mono text-[10px]">
+          <div className="flex items-center justify-between">
+            <span className="text-zinc-400 font-bold uppercase tracking-wider block text-[9px]">Telegram Bot Dispatcher</span>
+            <label className="flex items-center gap-2 cursor-pointer text-[9px] text-zinc-500 hover:text-white transition">
+              <input 
+                type="checkbox" 
+                checked={notifyOnTelegram}
+                onChange={(e) => setNotifyOnTelegram(e.target.checked)}
+                className="rounded border-zinc-850 bg-zinc-950 text-cyan-500 focus:ring-0 cursor-pointer"
+              />
+              <span>AUTO-NOTIFY SUBSCRIBERS</span>
+            </label>
+          </div>
+
+          <div className="grid grid-cols-12 gap-2 items-end">
+            <div className="col-span-8 space-y-1">
+              <label className="text-[8px] text-zinc-500 font-bold uppercase tracking-wider block">Global Bot Token</label>
+              <input 
+                type="password" 
+                placeholder="Enter Bot Token from @BotFather" 
+                value={telegramBotToken}
+                onChange={(e) => setTelegramBotToken(e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-850 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500/50 placeholder-zinc-700"
+              />
+            </div>
+            <button
+              onClick={handleSaveBotToken}
+              disabled={isSavingToken}
+              className="col-span-4 bg-cyan-500 hover:bg-cyan-400 disabled:bg-zinc-800 disabled:text-zinc-600 text-zinc-950 text-[9px] font-black uppercase tracking-wider py-2.5 rounded-lg text-center transition cursor-pointer"
+            >
+              {isSavingToken ? 'Saving...' : 'Save Token'}
+            </button>
+          </div>
+          <p className="text-[8px] text-zinc-600 leading-normal">
+            * Connected users receive automatic messages instantly when a new VIP Signal is broadcasted.
+          </p>
         </div>
       </div>
 

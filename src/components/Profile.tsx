@@ -1,4 +1,4 @@
-import { useState, useRef, ChangeEvent } from 'react';
+import { useState, useRef, ChangeEvent, useEffect } from 'react';
 import { 
   ArrowLeft, 
   ShieldCheck, 
@@ -21,11 +21,14 @@ import {
   Fingerprint,
   Copy,
   Check,
-  Info
+  Info,
+  MessageSquare
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, VIPRank } from '../types';
 import * as OTPAuth from 'otpauth';
+import { doc, updateDoc, getDoc } from 'firebase/firestore';
+import { db } from '../firebase';
 
 interface ProfileProps {
   user: User;
@@ -82,6 +85,24 @@ export default function Profile({
 
   // Copy helper
   const [copiedKey, setCopiedKey] = useState<'uid' | 'secret' | null>(null);
+
+  // Telegram Signal Bot States
+  const [telegramModalOpen, setTelegramModalOpen] = useState(false);
+  const [telegramUsername, setTelegramUsername] = useState(user.telegramUsername || '');
+  const [telegramChatId, setTelegramChatId] = useState(user.telegramChatId || '');
+  const [telegramAlertsActive, setTelegramAlertsActive] = useState(user.telegramAlertsActive ?? false);
+  const [telegramAlertSession, setTelegramAlertSession] = useState(user.telegramAlertSession || '14:00');
+  const [isTestingAlert, setIsTestingAlert] = useState(false);
+  const [isSavingTelegram, setIsSavingTelegram] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      setTelegramUsername(user.telegramUsername || '');
+      setTelegramChatId(user.telegramChatId || '');
+      setTelegramAlertsActive(user.telegramAlertsActive ?? false);
+      setTelegramAlertSession(user.telegramAlertSession || '14:00');
+    }
+  }, [user]);
 
   const handleCopyText = (text: string, key: 'uid' | 'secret') => {
     if (navigator.clipboard) {
@@ -184,6 +205,131 @@ export default function Profile({
     setPasswordModalOpen(false);
     setNewPassword('');
     setConfirmPassword('');
+  };
+
+  const handleTestTelegramAlert = async () => {
+    if (!telegramChatId) {
+      onShowToast('Please enter your Telegram Chat ID first.', 'error');
+      return;
+    }
+    
+    setIsTestingAlert(true);
+    onShowToast('Connecting to Telegram Signal Bot...', 'info');
+    
+    try {
+      let botToken = '';
+      try {
+        const configSnap = await getDoc(doc(db, 'system', 'telegram_config'));
+        if (configSnap.exists()) {
+          botToken = configSnap.data().botToken || '';
+        }
+      } catch (err) {
+        console.warn("Failed to fetch global botToken:", err);
+      }
+      
+      const cleanChatId = telegramChatId.trim();
+      const cleanUsername = telegramUsername.trim() || 'Investor';
+      const timeLabel = telegramAlertSession === '09:00' ? '09:00 AM (Morning Session)' : telegramAlertSession === '14:00' ? '02:00 PM (Afternoon Session)' : '08:00 PM (Evening Session)';
+      
+      const messageText = `🔔 <b>NGK Signal System Connection Verified!</b>\n\nHello @${cleanUsername},\n\nYour Telegram account is now successfully synced with the NGK node system. You will receive active copy trading alerts and reminders at your configured session time:\n\n⏱ <b>UK Time: ${timeLabel}</b>\n\nGet ready to deploy your licenses! 🚀`;
+
+      if (botToken) {
+        const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            chat_id: cleanChatId,
+            text: messageText,
+            parse_mode: 'HTML'
+          })
+        });
+        
+        const resData = await response.json();
+        if (resData.ok) {
+          onShowToast('Test message sent to your Telegram successfully!', 'success');
+        } else {
+          onShowToast(`Telegram Error: ${resData.description || 'Failed to send alert'}`, 'error');
+        }
+      } else {
+        onShowToast('Connection mock-verified! Configure Bot Token in Admin Panel for real Telegram delivery.', 'success');
+      }
+    } catch (err: any) {
+      console.error(err);
+      if (err?.message?.includes('fetch') || String(err).includes('TypeError')) {
+        onShowToast('CORS/Sandbox limit detected! Please open the app in a New Tab to send live Telegram alerts.', 'warning');
+      } else {
+        onShowToast('Failed to trigger Telegram alert. Check your network or Chat ID.', 'error');
+      }
+    } finally {
+      setIsTestingAlert(false);
+    }
+  };
+
+  const handleSaveTelegramSettings = async () => {
+    setIsSavingTelegram(true);
+    try {
+      const cleanChatId = telegramChatId.trim();
+      const cleanUsername = telegramUsername.trim() || 'Investor';
+
+      await updateDoc(doc(db, 'users', user.uid), {
+        telegramUsername: cleanUsername,
+        telegramChatId: cleanChatId,
+        telegramAlertsActive: telegramAlertsActive,
+        telegramAlertSession: telegramAlertSession
+      });
+
+      onShowToast('Telegram Signal Alert settings saved successfully!', 'success');
+
+      // Send connection/welcome message on successful active connection save
+      if (telegramAlertsActive && cleanChatId) {
+        let botToken = '';
+        try {
+          const configSnap = await getDoc(doc(db, 'system', 'telegram_config'));
+          if (configSnap.exists()) {
+            botToken = configSnap.data().botToken || '';
+          }
+        } catch (err) {
+          console.warn("Failed to fetch botToken for welcome message:", err);
+        }
+
+        if (botToken) {
+          const timeLabel = telegramAlertSession === '09:00' ? '09:00 AM UK Time (Morning Session)' : telegramAlertSession === '14:00' ? '02:00 PM UK Time (Afternoon Session)' : '08:00 PM UK Time (Evening Session)';
+          const welcomeMessage = `🎉 <b>Welcome to @NGK_Signalbot!</b>\n\nHello @${cleanUsername},\n\nYour account has been <b>Successfully Connected</b> to the NGK cryptographic node signal system! 🚀\n\n⚙️ <b>Your Subscribed Schedule:</b>\n⏱ <b>UK Time: ${timeLabel}</b>\n\nWhenever a signal or session reminder is broadcasted by the nodes, you will get instant alerts directly here. Happy Copy-Trading! 📈`;
+
+          try {
+            const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: cleanChatId,
+                text: welcomeMessage,
+                parse_mode: 'HTML'
+              })
+            });
+            const resData = await response.json();
+            if (resData.ok) {
+              onShowToast('Welcome notification sent to your Telegram!', 'success');
+            } else {
+              console.warn("Telegram API returned non-ok status:", resData);
+            }
+          } catch (sendErr: any) {
+            console.warn("Failed to deliver Telegram welcome alert:", sendErr);
+            if (sendErr?.message?.includes('fetch') || String(sendErr).includes('TypeError')) {
+              onShowToast('Saved! Note: Telegram testing requires opening the app in a New Tab due to Preview frame browser security.', 'info');
+            }
+          }
+        }
+      }
+
+      setTelegramModalOpen(false);
+    } catch (err) {
+      console.error("Error saving Telegram settings:", err);
+      onShowToast('Failed to save settings to your profile database.', 'error');
+    } finally {
+      setIsSavingTelegram(false);
+    }
   };
 
   const kycStatusDisplay = {
@@ -406,6 +552,30 @@ export default function Profile({
             </div>
           </div>
 
+          {/* Telegram Signal Alerts Button */}
+          <div 
+            id="telegram-signal-card-btn"
+            onClick={() => setTelegramModalOpen(true)}
+            className="p-4 flex items-center justify-between hover:bg-zinc-900/40 cursor-pointer transition duration-150"
+          >
+            <div className="flex items-center gap-3.5">
+              <div className="w-9 h-9 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400 shadow-sm">
+                <MessageSquare size={15} />
+              </div>
+              <div className="space-y-0.5">
+                <h4 className="text-xs font-bold text-white uppercase tracking-wide font-mono">Telegram Signal Bot</h4>
+                <p className="text-[10px] text-zinc-500 font-mono">Connect Telegram to receive UK-scheduled signal alerts</p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-1.5">
+              <span className={`text-[8px] font-bold px-2 py-0.5 rounded-full border uppercase font-mono tracking-wider ${user.telegramAlertsActive ? 'bg-sky-500/10 text-sky-400 border-sky-500/25' : 'bg-zinc-950 text-zinc-500 border-zinc-850'}`}>
+                {user.telegramAlertsActive ? 'Active' : 'Not Set'}
+              </span>
+              <ChevronRight size={13} className="text-zinc-600" />
+            </div>
+          </div>
+
 
         </div>
 
@@ -449,6 +619,141 @@ export default function Profile({
       </div>
 
       {/* ================================== MODALS ================================== */}
+
+      {/* Telegram Signal Bot Connection Modal */}
+      <AnimatePresence>
+        {telegramModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/80 backdrop-blur-xs overflow-y-auto">
+            <motion.div
+              initial={{ scale: 0.96, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.96, opacity: 0 }}
+              className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5.5 w-full max-w-sm shadow-2xl my-8 max-h-[90vh] overflow-y-auto relative"
+            >
+              <div className="flex justify-between items-center mb-3 border-b border-zinc-800 pb-3">
+                <div>
+                  <h3 className="font-bold text-sm text-white font-mono">Telegram Alerts</h3>
+                  <p className="text-[9px] text-sky-400 font-mono uppercase font-bold mt-0.5">UK-Scheduled Signal Nodes</p>
+                </div>
+                <button 
+                  onClick={() => setTelegramModalOpen(false)} 
+                  className="w-7 h-7 bg-zinc-950 hover:bg-zinc-800 rounded-lg text-zinc-400 flex items-center justify-center border border-zinc-850 transition text-xs font-bold font-mono"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-4 font-mono">
+                {/* Information Card */}
+                <div className="bg-sky-500/5 border border-sky-500/10 rounded-xl p-3 space-y-1.5 text-[10px] text-zinc-400 leading-relaxed">
+                  <span className="text-sky-400 font-bold block uppercase tracking-wider text-[9px]">How to connect:</span>
+                  <p className="block">1. Search <a href="https://t.me/NGK_Signalbot" target="_blank" rel="noopener noreferrer" className="text-sky-400 underline hover:text-sky-300">@NGK_Signalbot</a> or find our signal bot.</p>
+                  <p className="block">2. Send <code className="bg-zinc-950 px-1 py-0.5 rounded text-white text-[9px]">/start</code> to get your <b>Chat ID</b>.</p>
+                  <p className="block">3. Paste your Chat ID and Username below.</p>
+                </div>
+
+                {/* Connection Status Badge */}
+                <div className="flex items-center justify-between p-2.5 bg-zinc-950 rounded-xl border border-zinc-850/60 text-[9px]">
+                  <span className="text-zinc-500 uppercase font-bold">Node Status:</span>
+                  <span className={`font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider ${telegramAlertsActive && telegramChatId ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-zinc-900 text-zinc-500 border-zinc-800'}`}>
+                    {telegramAlertsActive && telegramChatId ? '● Connected & Active' : '○ Standby / Disconnected'}
+                  </span>
+                </div>
+
+                {/* Username Input */}
+                <div className="space-y-1">
+                  <label className="text-[8px] text-zinc-500 font-bold uppercase tracking-wider block">Telegram Username</label>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-500 text-xs">@</span>
+                    <input 
+                      id="tg-username-input"
+                      type="text" 
+                      placeholder="username" 
+                      value={telegramUsername.replace(/^@/, '')}
+                      onChange={(e) => setTelegramUsername(e.target.value)}
+                      className="w-full bg-zinc-950 border border-zinc-850 rounded-xl pl-7 pr-4 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500 font-sans"
+                    />
+                  </div>
+                </div>
+
+                {/* Chat ID Input */}
+                <div className="space-y-1">
+                  <label className="text-[8px] text-zinc-500 font-bold uppercase tracking-wider block">Telegram Chat ID</label>
+                  <input 
+                    id="tg-chatid-input"
+                    type="text" 
+                    placeholder="e.g. 748291039" 
+                    value={telegramChatId}
+                    onChange={(e) => setTelegramChatId(e.target.value.replace(/\D/g, ''))}
+                    className="w-full bg-zinc-950 border border-zinc-850 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+
+                {/* UK Session Picker */}
+                <div className="space-y-1">
+                  <label className="text-[8px] text-zinc-500 font-bold uppercase tracking-wider block">UK Session Session Alerts</label>
+                  <select 
+                    id="tg-session-select"
+                    value={telegramAlertSession}
+                    onChange={(e) => setTelegramAlertSession(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-850 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500 cursor-pointer"
+                  >
+                    <option value="09:00">09:00 AM UK Time (Morning Session)</option>
+                    <option value="14:00">02:00 PM UK Time (Afternoon Session)</option>
+                    <option value="20:00">08:00 PM UK Time (Evening Session)</option>
+                  </select>
+                </div>
+
+                {/* Toggle Alert Subscription */}
+                <div className="flex items-center justify-between p-1">
+                  <div className="space-y-0.5">
+                    <span className="text-[9px] font-bold text-white uppercase block">Subscribe to Alerts</span>
+                    <p className="text-[8px] text-zinc-500">Receive signals on session hours</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setTelegramAlertsActive(!telegramAlertsActive)}
+                    className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-200 focus:outline-none ${telegramAlertsActive ? 'bg-sky-500' : 'bg-zinc-800'}`}
+                  >
+                    <div className={`bg-zinc-950 w-4 h-4 rounded-full shadow-md transform duration-200 ${telegramAlertsActive ? 'translate-x-4' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+
+                {/* Actions */}
+                <div className="space-y-2 pt-2">
+                  <button 
+                    type="button"
+                    disabled={isTestingAlert || !telegramChatId}
+                    onClick={handleTestTelegramAlert}
+                    className="w-full bg-sky-500/10 hover:bg-sky-500/15 border border-sky-500/20 disabled:border-zinc-850/50 disabled:bg-zinc-950 disabled:text-zinc-600 text-sky-400 font-bold py-2 rounded-xl text-[10px] transition uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
+                  >
+                    {isTestingAlert ? 'Sending test...' : '⚡ Test Connection / Send Alert'}
+                  </button>
+
+                  <div className="flex gap-2">
+                    <button 
+                      type="button"
+                      onClick={() => setTelegramModalOpen(false)} 
+                      className="flex-1 bg-zinc-950 hover:bg-zinc-850 border border-zinc-850 text-zinc-400 font-bold py-2.5 rounded-xl text-xs transition uppercase"
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      type="button"
+                      id="save-telegram-settings-btn"
+                      disabled={isSavingTelegram}
+                      onClick={handleSaveTelegramSettings}
+                      className="flex-1 bg-sky-500 hover:bg-sky-400 text-zinc-950 font-black py-2.5 rounded-xl text-xs transition uppercase"
+                    >
+                      {isSavingTelegram ? 'Saving...' : 'Save Settings'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* 1. Password Update Modal */}
       <AnimatePresence>

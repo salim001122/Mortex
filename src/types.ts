@@ -57,6 +57,10 @@ export interface User {
   copyTradeResetTime: string | null; // ISO string
   createdAt: string;
   avatarUrl?: string; // High quality custom profile pic
+  telegramUsername?: string;
+  telegramChatId?: string;
+  telegramAlertsActive?: boolean;
+  telegramAlertSession?: string;
 }
 
 export interface Transaction {
