@@ -1390,7 +1390,7 @@ export default function App() {
   };
 
   // KYC Verification Submission
-  const handleUpdateKYC = async (fullName: string, idNumber: string, nationality: string, documentImage: string) => {
+  const handleUpdateKYC = async (fullName: string, idNumber: string, nationality: string, documentImage: string, phoneNumber: string) => {
     if (!currentUser) return;
     try {
       await updateDoc(doc(db, 'users', currentUser.uid), {
@@ -1400,6 +1400,7 @@ export default function App() {
           idNumber,
           nationality,
           documentImage,
+          phoneNumber,
           submittedAt: new Date().toISOString()
         }
       });

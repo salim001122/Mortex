@@ -9,6 +9,7 @@ import {
   LogOut, 
   ChevronRight, 
   Globe, 
+  Phone,
   UploadCloud, 
   QrCode,
   Calendar,
@@ -33,7 +34,7 @@ import { db } from '../firebase';
 interface ProfileProps {
   user: User;
   onNavigate: (screen: string) => void;
-  onUpdateKYC: (fullName: string, idNumber: string, nationality: string, documentImage: string) => void;
+  onUpdateKYC: (fullName: string, idNumber: string, nationality: string, documentImage: string, phoneNumber: string) => void;
   onUpdate2FA: (secret: string) => void;
   onUpdatePassword: (password: string) => void;
   onLogout: () => void;
@@ -72,6 +73,7 @@ export default function Profile({
   const [kycName, setKycName] = useState('');
   const [kycId, setKycId] = useState('');
   const [kycCountry, setKycCountry] = useState('');
+  const [kycPhone, setKycPhone] = useState('');
   const [kycImageBase64, setKycImageBase64] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -132,11 +134,11 @@ export default function Profile({
   };
 
   const handleKYCSubmit = () => {
-    if (!kycName || !kycId || !kycCountry || !kycImageBase64) {
+    if (!kycName || !kycId || !kycCountry || !kycPhone || !kycImageBase64) {
       onShowToast('Please fill out all fields and upload an ID photo.', 'error');
       return;
     }
-    onUpdateKYC(kycName, kycId, kycCountry, kycImageBase64);
+    onUpdateKYC(kycName, kycId, kycCountry, kycImageBase64, kycPhone);
     setKycModalOpen(false);
   };
 
@@ -876,6 +878,21 @@ export default function Profile({
                       value={kycCountry}
                       onChange={(e) => setKycCountry(e.target.value)}
                       className="w-full bg-zinc-950 border border-zinc-850 rounded-xl pl-10 pr-4 py-3 text-xs text-white focus:outline-none focus:border-cyan-500 font-sans"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[8px] text-zinc-500 font-bold uppercase block tracking-wider font-mono">Mobile Phone Number</label>
+                  <div className="relative">
+                    <Phone size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" />
+                    <input 
+                      id="kyc-phone-input"
+                      type="tel" 
+                      placeholder="+1 (555) 000-0000" 
+                      value={kycPhone}
+                      onChange={(e) => setKycPhone(e.target.value)}
+                      className="w-full bg-zinc-950 border border-zinc-850 rounded-xl pl-10 pr-4 py-3 text-xs text-white focus:outline-none focus:border-cyan-500 font-mono"
                     />
                   </div>
                 </div>

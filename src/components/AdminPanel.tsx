@@ -99,20 +99,86 @@ export default function AdminPanel({ onNavigate, currentUser, showToast }: Admin
   const [notifyOnTelegram, setNotifyOnTelegram] = useState(true);
   const [isSavingToken, setIsSavingToken] = useState(false);
 
-  // Load Telegram bot config on mount
+  // Auto-Poster Channel States
+  const [telegramChannelId, setTelegramChannelId] = useState('');
+  const [autoPosterActive, setAutoPosterActive] = useState(false);
+  const [autoPosterInterval, setAutoPosterInterval] = useState(2.5);
+  const [lastPosterIndex, setLastPosterIndex] = useState(0);
+  const [lastPostedAt, setLastPostedAt] = useState('');
+  const [nextPostAt, setNextPostAt] = useState('');
+  const [isSavingPoster, setIsSavingPoster] = useState(false);
+  const [isTestingPoster, setIsTestingPoster] = useState(false);
+  const [isExecutingManualPost, setIsExecutingManualPost] = useState(false);
+
+  // Automated Templates States
+  const [marketingTemplates, setMarketingTemplates] = useState<string[]>([]);
+  const [selectedTemplateIndex, setSelectedTemplateIndex] = useState<number | null>(null);
+  const [isPostingSpecificTemplate, setIsPostingSpecificTemplate] = useState<{[key: number]: boolean}>({});
+
+  // Load Telegram bot config and templates on mount
   useEffect(() => {
     const fetchConfig = async () => {
       try {
         const snap = await getDoc(doc(db, 'system', 'telegram_config'));
         if (snap.exists()) {
-          setTelegramBotToken(snap.data().botToken || '');
+          const data = snap.data();
+          setTelegramBotToken(data.botToken || '');
+          setTelegramChannelId(data.channelId || '');
+          setAutoPosterActive(data.autoPosterActive || false);
+          setAutoPosterInterval(data.autoPosterInterval || 2.5);
+          setLastPosterIndex(data.lastPosterIndex || 0);
+          setLastPostedAt(data.lastPostedAt || '');
+          setNextPostAt(data.nextPostAt || '');
         }
       } catch (err) {
         console.error("Error loading telegram config:", err);
       }
     };
     fetchConfig();
+
+    const fetchTemplates = async () => {
+      try {
+        const response = await fetch('/api/telegram-templates');
+        const data = await response.json();
+        if (response.ok && data.ok) {
+          setMarketingTemplates(data.templates || []);
+        }
+      } catch (err) {
+        console.warn("Failed to fetch automated telegram templates list:", err);
+      }
+    };
+    fetchTemplates();
   }, []);
+
+  const handlePostSpecificTemplate = async (idx: number) => {
+    if (!telegramBotToken || !telegramChannelId) {
+      showToast('Please configure Bot Token and Channel ID first!', 'warning');
+      return;
+    }
+
+    setIsPostingSpecificTemplate(prev => ({ ...prev, [idx]: true }));
+    try {
+      const response = await fetch('/api/telegram-post-template', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ templateIndex: idx })
+      });
+
+      const data = await response.json();
+      if (response.ok && data.ok) {
+        showToast(`Template #${idx + 1} posted to channel successfully!`, 'success');
+        setNextPostAt(data.nextPostAt);
+        setLastPostedAt(new Date().toISOString());
+      } else {
+        throw new Error(data.error || 'Failed to broadcast selected template.');
+      }
+    } catch (err: any) {
+      console.error("Send specific template error:", err);
+      showToast(`Broadcast Failed: ${err.message || err}`, 'error');
+    } finally {
+      setIsPostingSpecificTemplate(prev => ({ ...prev, [idx]: false }));
+    }
+  };
 
   const handleSaveBotToken = async () => {
     setIsSavingToken(true);
@@ -127,6 +193,104 @@ export default function AdminPanel({ onNavigate, currentUser, showToast }: Admin
       showToast('Failed to save Telegram Bot Token.', 'error');
     } finally {
       setIsSavingToken(false);
+    }
+  };
+
+  const handleSavePosterSettings = async () => {
+    setIsSavingPoster(true);
+    try {
+      let cleanedId = telegramChannelId.trim();
+      // Clean up common URL formats like t.me/channel or https://t.me/channel
+      cleanedId = cleanedId.replace(/^(https?:\/\/)?(www\.)?t\.me\//i, "");
+      // Prepend @ if it's a username (not numeric and doesn't start with @ already)
+      if (cleanedId && !cleanedId.startsWith("@") && !/^-?\d+$/.test(cleanedId)) {
+        cleanedId = "@" + cleanedId;
+      }
+
+      await setDoc(doc(db, 'system', 'telegram_config'), {
+        channelId: cleanedId,
+        autoPosterActive,
+        autoPosterInterval: Number(autoPosterInterval),
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      setTelegramChannelId(cleanedId);
+      showToast('Telegram Channel Auto-Poster settings saved!', 'success');
+      
+      // Refresh local next post estimation
+      const snap = await getDoc(doc(db, 'system', 'telegram_config'));
+      if (snap.exists()) {
+        setNextPostAt(snap.data().nextPostAt || '');
+      }
+    } catch (err) {
+      console.error("Error saving auto poster settings:", err);
+      showToast('Failed to save Auto-Poster settings.', 'error');
+    } finally {
+      setIsSavingPoster(false);
+    }
+  };
+
+  const handleTestChannel = async () => {
+    if (!telegramBotToken) {
+      showToast('Please save a valid Global Bot Token first!', 'warning');
+      return;
+    }
+    if (!telegramChannelId) {
+      showToast('Please enter a Channel Chat ID or Username first!', 'warning');
+      return;
+    }
+
+    setIsTestingPoster(true);
+    try {
+      const response = await fetch('/api/telegram-test-channel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          botToken: telegramBotToken.trim(),
+          channelId: telegramChannelId.trim()
+        })
+      });
+
+      const data = await response.json();
+      if (response.ok && data.ok) {
+        showToast('Test message sent to Telegram channel successfully!', 'success');
+      } else {
+        throw new Error(data.description || data.error || 'Failed to trigger Telegram connection.');
+      }
+    } catch (err: any) {
+      console.error("Test channel error:", err);
+      showToast(`Telegram Test Failed: ${err.message || err}`, 'error');
+    } finally {
+      setIsTestingPoster(false);
+    }
+  };
+
+  const handleManualPostNext = async () => {
+    if (!telegramBotToken || !telegramChannelId) {
+      showToast('Please configure Bot Token and Channel ID first!', 'warning');
+      return;
+    }
+
+    setIsExecutingManualPost(true);
+    try {
+      const response = await fetch('/api/telegram-manual-post', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      const data = await response.json();
+      if (response.ok && data.ok) {
+        showToast(`Next template (Index ${data.templateIndex}) posted to channel successfully!`, 'success');
+        setLastPosterIndex(data.nextTemplateIndex);
+        setNextPostAt(data.nextPostAt);
+        setLastPostedAt(new Date().toISOString());
+      } else {
+        throw new Error(data.error || 'Failed to broadcast next template.');
+      }
+    } catch (err: any) {
+      console.error("Manual post error:", err);
+      showToast(`Broadcast Failed: ${err.message || err}`, 'error');
+    } finally {
+      setIsExecutingManualPost(false);
     }
   };
 
@@ -595,6 +759,169 @@ export default function AdminPanel({ onNavigate, currentUser, showToast }: Admin
           <p className="text-[8px] text-zinc-600 leading-normal">
             * Connected users receive automatic messages instantly when a new VIP Signal is broadcasted.
           </p>
+
+          {/* Channel Auto-Poster Config Section */}
+          <div className="border-t border-zinc-800/60 pt-4.5 mt-2.5 space-y-3.5">
+            <div className="flex items-center justify-between">
+              <span className="text-cyan-400 font-bold uppercase tracking-wider block text-[9px] flex items-center gap-1">
+                📢 AUTOMATED CHANNEL POSTER (DAILY 8-10 POSTS)
+              </span>
+              <label className="flex items-center gap-2 cursor-pointer text-[9px] text-zinc-500 hover:text-white transition">
+                <input 
+                  type="checkbox" 
+                  checked={autoPosterActive}
+                  onChange={(e) => setAutoPosterActive(e.target.checked)}
+                  className="rounded border-zinc-850 bg-zinc-950 text-cyan-500 focus:ring-0 cursor-pointer"
+                />
+                <span className="font-bold uppercase">ENABLE AUTO-POSTING</span>
+              </label>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3.5">
+              <div className="space-y-1">
+                <label className="text-[8px] text-zinc-500 font-bold uppercase tracking-wider block">Channel Username or Chat ID</label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. @NGK_Signalbot_Channel" 
+                  value={telegramChannelId}
+                  onChange={(e) => setTelegramChannelId(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-850 rounded-lg px-2.5 py-2 text-xs text-white focus:outline-none focus:border-cyan-500/50 placeholder-zinc-750 font-mono"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[8px] text-zinc-500 font-bold uppercase tracking-wider block">Posting Interval (Hours)</label>
+                <select
+                  value={autoPosterInterval}
+                  onChange={(e) => setAutoPosterInterval(Number(e.target.value))}
+                  className="w-full bg-zinc-950 border border-zinc-850 rounded-lg px-2 py-2 text-xs text-white focus:outline-none focus:border-cyan-500/50 cursor-pointer"
+                >
+                  <option value={1}>1.0 Hour (24 posts/day)</option>
+                  <option value={1.5}>1.5 Hours (16 posts/day)</option>
+                  <option value={2}>2.0 Hours (12 posts/day)</option>
+                  <option value={2.4}>2.4 Hours (10 posts/day) ⭐</option>
+                  <option value={3}>3.0 Hours (8 posts/day) ⭐</option>
+                  <option value={4}>4.0 Hours (6 posts/day)</option>
+                  <option value={6}>6.0 Hours (4 posts/day)</option>
+                  <option value={12}>12.0 Hours (2 posts/day)</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Live Scheduler Stats Panel */}
+            <div className="bg-zinc-950/80 rounded-xl border border-zinc-850 p-2.5 space-y-1.5 text-[8.5px] text-zinc-400 font-mono">
+              <div className="flex justify-between">
+                <span>Scheduler Status:</span>
+                <span className={`font-bold ${autoPosterActive ? 'text-emerald-400 animate-pulse' : 'text-zinc-500'}`}>
+                  {autoPosterActive ? '● RUNNING IN BACKGROUND' : '○ SHUTDOWN / DISABLED'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Next Rotated Post Index:</span>
+                <span className="text-cyan-400 font-bold">Template #{lastPosterIndex + 1} of 10</span>
+              </div>
+              {lastPostedAt && (
+                <div className="flex justify-between">
+                  <span>Last Message Posted:</span>
+                  <span className="text-white">{new Date(lastPostedAt).toLocaleTimeString()} ({new Date(lastPostedAt).toLocaleDateString()})</span>
+                </div>
+              )}
+              {autoPosterActive && nextPostAt && (
+                <div className="flex justify-between border-t border-zinc-900 pt-1.5 text-zinc-500">
+                  <span>Next Scheduled Post:</span>
+                  <span className="text-emerald-400 font-black">{new Date(nextPostAt).toLocaleTimeString()} ({new Date(nextPostAt).toLocaleDateString()})</span>
+                </div>
+              )}
+            </div>
+
+            {/* Actions list */}
+            <div className="grid grid-cols-3 gap-2 pt-0.5">
+              <button
+                onClick={handleSavePosterSettings}
+                disabled={isSavingPoster}
+                className="bg-cyan-500 hover:bg-cyan-400 disabled:bg-zinc-800 disabled:text-zinc-600 text-zinc-950 text-[9px] font-black uppercase tracking-wider py-2.5 rounded-lg text-center transition cursor-pointer font-bold"
+              >
+                {isSavingPoster ? 'Saving...' : 'Save Poster'}
+              </button>
+              <button
+                onClick={handleTestChannel}
+                disabled={isTestingPoster}
+                className="bg-zinc-850 hover:bg-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-700 text-zinc-300 text-[9px] font-bold uppercase tracking-wider py-2.5 rounded-lg text-center transition cursor-pointer border border-zinc-800"
+              >
+                {isTestingPoster ? 'Testing...' : 'Test Channel'}
+              </button>
+              <button
+                onClick={handleManualPostNext}
+                disabled={isExecutingManualPost}
+                className="bg-zinc-800 hover:bg-zinc-750 disabled:bg-zinc-900 disabled:text-zinc-700 text-white text-[9px] font-bold uppercase tracking-wider py-2.5 rounded-lg text-center transition cursor-pointer border border-zinc-750/50 flex items-center justify-center gap-1"
+              >
+                {isExecutingManualPost ? 'Posting...' : 'Post Next Now'}
+              </button>
+            </div>
+            <p className="text-[8px] text-zinc-600 leading-normal">
+              * The bot will automatically rotate between 10 professionally formatted marketing/educational messages regarding NGK benefits, registration links, rewards, and support in English and Russian.
+            </p>
+
+            {/* Expanded Templates Preview Panel */}
+            {marketingTemplates.length > 0 && (
+              <div className="border-t border-zinc-800/40 pt-3.5 space-y-2">
+                <span className="text-zinc-400 font-bold uppercase tracking-wider block text-[8px]">
+                  📖 ROTATING MARKETING TEMPLATES PREVIEW ({marketingTemplates.length})
+                </span>
+                <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-1 scrollbar-thin">
+                  {marketingTemplates.map((template, idx) => {
+                    // Extract first line as a title
+                    const tempLines = template.replace(/<[^>]*>/g, '').split('\n');
+                    const title = tempLines[0] || `Template #${idx + 1}`;
+                    const isSelected = selectedTemplateIndex === idx;
+
+                    return (
+                      <div 
+                        key={idx} 
+                        className={`border rounded-lg transition overflow-hidden ${
+                          isSelected 
+                            ? 'border-cyan-500/40 bg-cyan-950/5' 
+                            : 'border-zinc-850 bg-zinc-950/40 hover:bg-zinc-950'
+                        }`}
+                      >
+                        <button
+                          onClick={() => setSelectedTemplateIndex(isSelected ? null : idx)}
+                          className="w-full text-left px-2.5 py-2 text-[10px] font-bold text-zinc-300 flex justify-between items-center cursor-pointer"
+                        >
+                          <span className="flex items-center gap-1.5 truncate">
+                            <span className="text-cyan-400 font-mono text-[8px] bg-cyan-950 border border-cyan-800 px-1 py-0.5 rounded">
+                              #{idx + 1}
+                            </span>
+                            <span className="truncate">{title}</span>
+                          </span>
+                          <span className="text-[8px] text-zinc-500">
+                            {isSelected ? '▲ Collapse' : '▼ Expand'}
+                          </span>
+                        </button>
+
+                        {isSelected && (
+                          <div className="px-2.5 pb-2.5 pt-1 space-y-2.5 border-t border-zinc-900 bg-zinc-950/80">
+                            <pre className="text-[8.5px] text-zinc-400 leading-normal whitespace-pre-wrap font-sans max-h-[140px] overflow-y-auto p-2 bg-black/40 rounded border border-zinc-900/60 select-all">
+                              {template.replace(/<br\s*\/?>/gi, '\n').replace(/<\/?[^>]+(>|$)/g, "")}
+                            </pre>
+                            <div className="flex justify-end gap-1.5">
+                              <button
+                                onClick={() => handlePostSpecificTemplate(idx)}
+                                disabled={isPostingSpecificTemplate[idx]}
+                                className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 disabled:text-zinc-600 disabled:bg-zinc-900 border border-emerald-500/20 px-2.5 py-1 rounded text-[8px] font-bold uppercase tracking-wider transition cursor-pointer flex items-center gap-1"
+                              >
+                                {isPostingSpecificTemplate[idx] ? 'Sending...' : '⚡ Broadcast This Now'}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

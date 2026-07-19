@@ -13,5 +13,8 @@ service cloud.firestore {
     match /chats/{document=**} {
       allow read, write: if true;
     }
+    match /system/{document=**} {
+      allow read, write: if true;
+    }
   }
 }
