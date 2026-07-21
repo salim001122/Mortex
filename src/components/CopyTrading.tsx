@@ -24,6 +24,64 @@ import { VALID_ORDER_NUMBERS } from '../lib/orderCodes';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 
+export function NgkLogo({ className = "w-12 h-12" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* Background glow circle */}
+      <circle cx="50" cy="50" r="45" fill="url(#ngkGlow)" opacity="0.15" />
+      
+      {/* Circuit track Outer ring */}
+      <circle cx="50" cy="50" r="40" stroke="url(#ngkRing)" strokeWidth="1.5" strokeDasharray="6 4" opacity="0.75" />
+      <circle cx="50" cy="50" r="34" stroke="url(#ngkRing)" strokeWidth="1" opacity="0.3" />
+      
+      {/* Hexagonal Shield Plate */}
+      <polygon points="50,18 78,34 78,66 50,82 22,66 22,34" fill="#09090b" stroke="url(#ngkAccent)" strokeWidth="2" strokeLinejoin="round" />
+      
+      {/* Circuit Nodes */}
+      <circle cx="50" cy="18" r="3" fill="#22d3ee" className="animate-pulse" />
+      <circle cx="78" cy="34" r="2" fill="#eab308" />
+      <circle cx="78" cy="66" r="2" fill="#22d3ee" />
+      <circle cx="50" cy="82" r="3" fill="#eab308" className="animate-pulse" />
+      <circle cx="22" cy="66" r="2" fill="#22d3ee" />
+      <circle cx="22" cy="34" r="2" fill="#eab308" />
+
+      {/* Central stylized letters "NGK" */}
+      <text x="50" y="55" textAnchor="middle" fill="url(#ngkAccent)" fontSize="18" fontWeight="900" fontFamily="sans-serif" letterSpacing="0.5" filter="url(#ngkNeon)">
+        NGK
+      </text>
+      
+      {/* Small tech sub-label */}
+      <text x="50" y="68" textAnchor="middle" fill="#a1a1aa" fontSize="6" fontWeight="bold" fontFamily="monospace" letterSpacing="1">
+        SECURE NODE
+      </text>
+
+      <defs>
+        <radialGradient id="ngkGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" transform="translate(50 50) rotate(90) scale(45)">
+          <stop offset="0%" stopColor="#06b6d4" />
+          <stop offset="100%" stopColor="#09090b" stopOpacity="0" />
+        </radialGradient>
+        <linearGradient id="ngkRing" x1="10" y1="10" x2="90" y2="90" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#06b6d4" />
+          <stop offset="50%" stopColor="#eab308" />
+          <stop offset="100%" stopColor="#ec4899" />
+        </linearGradient>
+        <linearGradient id="ngkAccent" x1="20" y1="20" x2="80" y2="80" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#22d3ee" />
+          <stop offset="50%" stopColor="#38bdf8" />
+          <stop offset="100%" stopColor="#fbbf24" />
+        </linearGradient>
+        <filter id="ngkNeon" x="-10%" y="-10%" width="120%" height="120%">
+          <feGaussianBlur stdDeviation="1.5" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+    </svg>
+  );
+}
+
 export interface CountrySignalSchedule {
   name: string;
   flag: string;
@@ -317,8 +375,10 @@ export default function CopyTrading({
     pair: string;
     direction: string;
     endTimeMs: number;
+    startTimeMs?: number;
     label: string;
     isActive: boolean;
+    code?: string;
   } | null>(null);
 
   // Custom step modal flow for launching trades
@@ -428,8 +488,10 @@ export default function CopyTrading({
             pair: adminSignal.pair || 'BTC/USDT',
             direction: adminSignal.direction || 'BULLISH',
             endTimeMs: endMs,
+            startTimeMs: startMs,
             label: labelText,
-            isActive: true
+            isActive: true,
+            code: adminSignal.code
           });
           setActiveSignalIndex(sigIndex);
           setCountdownStr(`${labelText} is ACTIVE! Ends in ${mins}m ${secs}s`);
@@ -536,7 +598,7 @@ export default function CopyTrading({
     setModalStep(2);
   };
 
-  const handleVerifyAndProceedToSim = () => {
+  const handleVerifyAndProceedToSim = (overrideCode?: string) => {
     if (activeSignalIndex === null) {
       showToastHelper("Copy trade blocked! Trading is only permitted during active signal hours. Please wait for the next signal.", "error");
       setModalTrader(null);
@@ -544,17 +606,19 @@ export default function CopyTrading({
     }
     setOrderNumberError('');
 
-    if (!orderNumberInput) {
+    const targetCode = overrideCode || orderNumberInput;
+
+    if (!targetCode) {
       setOrderNumberError("Please enter order number.");
       return;
     }
 
-    if (orderNumberInput.includes(' ')) {
+    if (targetCode.includes(' ')) {
       setOrderNumberError("Order number cannot contain spaces.");
       return;
     }
 
-    const clean = orderNumberInput.trim().toUpperCase();
+    const clean = targetCode.trim().toUpperCase();
     if (!adminSignal || !adminSignal.isActive) {
       setOrderNumberError("No active signal code is currently broadcasting.");
       return;
@@ -563,6 +627,10 @@ export default function CopyTrading({
     if (clean !== adminSignal.code.trim().toUpperCase()) {
       setOrderNumberError("Invalid Order Code. Please check the active code shared in the official group.");
       return;
+    }
+
+    if (overrideCode) {
+      setOrderNumberInput(overrideCode);
     }
 
     if (adminSignal.type === 'signal_3' && user.mainBalance < 300) {
@@ -742,49 +810,161 @@ export default function CopyTrading({
       {/* 3. Top Copy Traders List for Target Region */}
       <div className="space-y-3.5">
         {activeSignalDetails ? (
-          /* ACTIVE VIP SIGNAL SESSION PANEL */
+          /* ACTIVE VIP SIGNAL SESSION PANEL - HIGH FIDELITY CRYPTO CARD */
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-gradient-to-br from-zinc-900 to-zinc-950 border-2 border-emerald-500/40 rounded-2xl p-5 space-y-4 shadow-[0_0_25px_rgba(16,185,129,0.15)] relative overflow-hidden"
+            className="bg-gradient-to-b from-zinc-900 to-black border-2 border-cyan-500/30 rounded-3xl p-5.5 space-y-4 shadow-[0_10px_40px_rgba(6,182,212,0.15)] relative overflow-hidden"
           >
-            <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-2xl pointer-events-none" />
-            
-            <div className="flex justify-between items-center">
-              <span className="text-[10px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-3 py-1 rounded-full font-mono font-bold tracking-wider flex items-center gap-1.5 animate-pulse">
-                <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-ping" />
-                {activeSignalDetails.label.toUpperCase()} SESSION ACTIVE
-              </span>
-              <span className="text-[9px] text-zinc-400 font-mono bg-zinc-900 px-2 py-0.5 rounded-md border border-zinc-800">1 Hour Trade Window</span>
+            {/* Holographic Circuit Pattern watermark */}
+            <div className="absolute inset-0 bg-[linear-gradient(rgba(6,182,212,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(6,182,212,0.03)_1px,transparent_1px)] bg-[size:16px_16px] opacity-40 pointer-events-none" />
+            <div className="absolute top-0 right-0 w-44 h-44 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-10 -left-10 w-44 h-44 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
+
+            {/* HEADER DESIGN WITH NGK LOGO */}
+            <div className="flex justify-between items-start gap-3 relative z-10">
+              <div className="flex items-center gap-3">
+                <div className="w-13 h-13 bg-zinc-950/80 rounded-2xl p-1 border border-cyan-500/20 shadow-inner flex items-center justify-center relative group">
+                  <NgkLogo className="w-11 h-11" />
+                  <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[9px] bg-cyan-500/10 text-cyan-400 border border-cyan-500/25 px-2 py-0.5 rounded font-black font-mono tracking-wider">
+                      NGK CRYPTO SYSTEMS
+                    </span>
+                    <span className="text-[7.5px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded font-bold uppercase font-mono">
+                      SYNCED
+                    </span>
+                  </div>
+                  <h3 className="text-sm font-black text-white mt-1 uppercase font-mono tracking-wide">
+                    {activeSignalDetails.label} CONTRACT
+                  </h3>
+                </div>
+              </div>
+              <div className="text-right">
+                <span className="text-[8px] text-zinc-500 uppercase font-black font-mono block">Node Status</span>
+                <span className="text-[9px] text-emerald-400 font-black font-mono flex items-center justify-end gap-1 mt-0.5">
+                  <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
+                  ACTIVE BROADCAST
+                </span>
+              </div>
             </div>
 
-            <div className="flex justify-between items-center bg-black/60 border border-zinc-800/80 p-4 rounded-xl">
-              <div className="space-y-1">
-                <span className="text-[9px] text-zinc-500 uppercase tracking-wider font-mono block">Assigned Asset Pair</span>
-                <p className="text-base font-black text-white font-mono tracking-wide">{activeSignalDetails.pair}</p>
-              </div>
-              <div className="text-right space-y-1">
-                <span className="text-[9px] text-zinc-500 uppercase tracking-wider font-mono block">Forecast Direction</span>
-                <p className={`text-sm font-black font-mono flex items-center justify-end gap-1 ${activeSignalDetails.direction.toUpperCase() === 'BULLISH' || activeSignalDetails.direction.toUpperCase() === 'LONG' ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {activeSignalDetails.direction.toUpperCase() === 'BULLISH' || activeSignalDetails.direction.toUpperCase() === 'LONG' ? '▲ BULLISH (LONG)' : '▼ BEARISH (SHORT)'}
+            {/* DYNAMIC PROGRESS COUNTDOWN BAR */}
+            {(() => {
+              const nowMs = Date.now();
+              const startMs = activeSignalDetails.startTimeMs || (activeSignalDetails.endTimeMs - 60 * 60 * 1000);
+              const totalMs = activeSignalDetails.endTimeMs - startMs;
+              const elapsedMs = Math.max(0, Math.min(totalMs, nowMs - startMs));
+              const percentRemaining = Math.max(0, Math.min(100, ((totalMs - elapsedMs) / totalMs) * 100));
+              
+              const isCrit = percentRemaining < 20;
+              const isWarning = percentRemaining < 50;
+              
+              const barColor = isCrit 
+                ? "bg-gradient-to-r from-rose-600 to-red-500" 
+                : isWarning 
+                  ? "bg-gradient-to-r from-amber-500 to-yellow-400" 
+                  : "bg-gradient-to-r from-cyan-500 via-sky-400 to-emerald-400";
+              
+              return (
+                <div className="bg-zinc-950/80 border border-zinc-850 p-3 rounded-2xl space-y-2 relative z-10">
+                  <div className="flex justify-between items-center font-mono text-[9px]">
+                    <span className="text-zinc-500 font-bold flex items-center gap-1 uppercase">
+                      <Hourglass size={10} className="animate-spin text-cyan-400" style={{ animationDuration: '4s' }} />
+                      Broadcasting Session Window Progress
+                    </span>
+                    <span className={`font-black ${isCrit ? "text-rose-400 animate-pulse" : isWarning ? "text-amber-400" : "text-cyan-400"}`}>
+                      {percentRemaining.toFixed(0)}% VALIDITY
+                    </span>
+                  </div>
+                  
+                  <div className="h-1.5 bg-zinc-900 rounded-full overflow-hidden border border-zinc-800/50">
+                    <div 
+                      className={`h-full ${barColor} rounded-full transition-all duration-1000`}
+                      style={{ width: `${percentRemaining}%` }}
+                    />
+                  </div>
+                  
+                  <div className="flex justify-between items-center text-[8px] text-zinc-500 font-mono">
+                    <span>Activated: {new Date(startMs).toLocaleTimeString()} UTC</span>
+                    <span className={isCrit ? "text-rose-400 font-bold" : "text-zinc-400"}>Expires in exactly 1 hour</span>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* FORECAST SIGNAL METADATA */}
+            <div className="grid grid-cols-2 gap-2 relative z-10">
+              <div className="bg-zinc-950/50 border border-zinc-850/50 p-3 rounded-2xl flex flex-col justify-center">
+                <span className="text-[8px] text-zinc-500 uppercase tracking-wider font-mono font-bold">Assigned Node Pair</span>
+                <p className="text-sm font-black text-white font-mono tracking-wider mt-0.5 flex items-center gap-1.5">
+                  <TrendingUp size={12} className="text-cyan-400" />
+                  {activeSignalDetails.pair}
                 </p>
               </div>
+
+              <div className="bg-zinc-950/50 border border-zinc-850/50 p-3 rounded-2xl flex flex-col justify-center">
+                <span className="text-[8px] text-zinc-500 uppercase tracking-wider font-mono font-bold">Market Bias Forecast</span>
+                <span className={`text-[11px] font-black font-mono tracking-wide mt-0.5 inline-flex items-center gap-1 ${
+                  activeSignalDetails.direction.toUpperCase() === 'BULLISH' || activeSignalDetails.direction.toUpperCase() === 'LONG' 
+                    ? 'text-emerald-400' 
+                    : 'text-rose-400'
+                }`}>
+                  {activeSignalDetails.direction.toUpperCase() === 'BULLISH' || activeSignalDetails.direction.toUpperCase() === 'LONG' 
+                    ? '🟢 ▲ BULLISH (CALL)' 
+                    : '🔴 ▼ BEARISH (PUT)'}
+                </span>
+              </div>
             </div>
 
-            <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-900 font-mono text-[9px] text-zinc-400 flex justify-between items-center">
-              <span>VIP Settlement Yield:</span>
-              <span className="text-emerald-400 font-black text-xs">+2.00% Net Profit (30m contract)</span>
-            </div>
+            {/* CRYPTO VERIFICATION ORDER CODE BOX */}
+            {activeSignalDetails.code && (
+              <div className="bg-zinc-950/80 border border-zinc-850 p-3 rounded-2xl relative z-10 flex items-center justify-between group">
+                <div className="space-y-0.5">
+                  <span className="text-[8px] text-zinc-500 uppercase tracking-wider font-mono font-bold block">
+                    CRYPTOGRAPHIC NODE VERIFICATION CODE
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-black text-amber-400 font-mono tracking-widest select-all bg-amber-400/5 border border-amber-500/10 px-2 py-0.5 rounded">
+                      {activeSignalDetails.code}
+                    </span>
+                    <span className="text-[8px] text-zinc-500 font-mono">
+                      (1-Hour Session Lock)
+                    </span>
+                  </div>
+                </div>
+                
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(activeSignalDetails.code || '');
+                    showToastHelper(`Verification Code ${activeSignalDetails.code} copied!`, 'success');
+                  }}
+                  className="flex items-center gap-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white px-2.5 py-1.5 rounded-lg text-[9px] font-bold font-mono transition cursor-pointer"
+                >
+                  <Copy size={11} className="text-cyan-400" />
+                  Copy Code
+                </button>
+              </div>
+            )}
 
-            <button
-              onClick={() => {
-                const defaultTrader = countryTraders[0] || { name: 'Alpha Pulse', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop&crop=face', winRate: 99, followers: 8520, roi30d: 840, minAmount: 30 };
-                handleOpenTraderModal(defaultTrader);
-              }}
-              className="w-full py-3.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 text-xs font-black uppercase tracking-wider rounded-xl transition shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.45)] font-mono flex items-center justify-center gap-2"
-            >
-              ⚡ EXECUTE SIGNAL TRADE NOW
-            </button>
+            {/* ACTION FOOTER */}
+            <div className="pt-1.5 relative z-10 flex gap-2">
+              <button
+                onClick={() => {
+                  const defaultTrader = countryTraders[0] || { name: 'Alpha Pulse', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop&crop=face', winRate: 99, followers: 8520, roi30d: 840, minAmount: 30 };
+                  handleOpenTraderModal(defaultTrader);
+                }}
+                className="w-full py-3.5 bg-gradient-to-r from-cyan-500 to-sky-500 hover:from-cyan-400 hover:to-sky-400 text-zinc-950 text-xs font-black uppercase tracking-wider rounded-xl transition shadow-[0_4px_20px_rgba(6,182,212,0.35)] font-mono flex items-center justify-center gap-2 cursor-pointer"
+              >
+                ⚡ DEPLOY SECURE NODE TRADING
+              </button>
+            </div>
           </motion.div>
         ) : (
           /* LOCKED SESSION STATUS PANEL */
@@ -1150,20 +1330,91 @@ export default function CopyTrading({
                   </button>
                 </div>
               ) : modalStep === 2 ? (
-                /* STEP 2: Order Number Verification from Screenshot #2 */
+                /* STEP 2: HIGH-FIDELITY DIGITAL NODE LICENSE VERIFICATION CARD */
                 <div className="space-y-4 font-mono text-zinc-300">
                   <div className="flex items-center gap-1.5 text-zinc-400 font-bold text-[10px] uppercase mb-1">
                     <button 
                       onClick={() => setModalStep(1)} 
-                      className="text-zinc-500 hover:text-white transition flex items-center gap-0.5 border border-zinc-800 bg-zinc-950 px-2 py-0.5 rounded-md"
+                      className="text-zinc-500 hover:text-white transition flex items-center gap-0.5 border border-zinc-800 bg-zinc-950 px-2 py-0.5 rounded-md cursor-pointer"
                     >
                       ← Back
                     </button>
-                    <span>Follow-up Validation</span>
+                    <span>Ledger Node Verification</span>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Order number</label>
+                  {/* PREMIUM NODE LICENSE CORE BOX */}
+                  <div className="bg-gradient-to-b from-zinc-900 to-black border border-cyan-500/30 rounded-2xl p-4 space-y-3 shadow-[0_5px_15px_rgba(6,182,212,0.1)] relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-500/5 rounded-full blur-xl pointer-events-none" />
+                    
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-10 h-10 bg-zinc-950 border border-zinc-850 rounded-xl p-0.5 flex items-center justify-center">
+                        <NgkLogo className="w-8 h-8" />
+                      </div>
+                      <div>
+                        <span className="text-[7.5px] bg-amber-400/10 text-amber-400 border border-amber-400/20 px-1.5 py-0.5 rounded font-black tracking-wider uppercase">
+                          Crypto Secure Node
+                        </span>
+                        <h4 className="text-[11px] font-black text-white uppercase tracking-wider mt-0.5">
+                          License Gateway Auth
+                        </h4>
+                      </div>
+                    </div>
+
+                    {activeSignalDetails && activeSignalDetails.code ? (
+                      /* ACTIVE SIGNAL IS DETECTED - ONE CLICK ACTION */
+                      <div className="bg-zinc-950/90 border border-zinc-850 p-3 rounded-xl space-y-2.5">
+                        <div className="space-y-1">
+                          <span className="text-[8px] text-zinc-500 uppercase tracking-wider font-bold">
+                            Broadcasted Signal Detected
+                          </span>
+                          <div className="flex justify-between items-center text-[10px]">
+                            <span className="text-zinc-300 font-bold">Session Code:</span>
+                            <span className="text-amber-400 font-black tracking-widest bg-amber-400/5 border border-amber-500/20 px-1.5 py-0.5 rounded text-[11px]">
+                              {activeSignalDetails.code}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="text-[8px] text-zinc-500 leading-normal">
+                          The system has securely synchronized with the live UK high-frequency node. Click below to auto-authorize the license and match the trade instantly.
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (activeSignalDetails.code) {
+                              handleVerifyAndProceedToSim(activeSignalDetails.code);
+                            }
+                          }}
+                          className="w-full py-2.5 bg-gradient-to-r from-cyan-500 to-sky-500 hover:from-cyan-400 hover:to-sky-400 text-zinc-950 font-black text-[10px] uppercase tracking-wider rounded-lg transition shadow-[0_3px_10px_rgba(6,182,212,0.2)] flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          ⚡ AUTO-AUTHORIZE SECURE LICENSE
+                        </button>
+                      </div>
+                    ) : (
+                      /* NO ACTIVE SIGNAL IS BROADCASTING */
+                      <div className="bg-zinc-950/90 border border-zinc-850 p-3 rounded-xl text-center space-y-2">
+                        <div className="w-6 h-6 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center mx-auto">
+                          <Lock size={10} className="text-zinc-500" />
+                        </div>
+                        <div className="space-y-0.5">
+                          <p className="text-[9px] font-bold text-zinc-400 uppercase">Gateway Offline</p>
+                          <p className="text-[7.5px] text-zinc-500 max-w-xs mx-auto leading-normal">
+                            No active signal is currently broadcasting on the ledger network. Please wait for the official UK BST schedules.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* COLLAPSIBLE / SECONDARY MANUAL OPTION */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[8px] text-zinc-500 uppercase tracking-wider font-bold">
+                        Or enter code manually
+                      </span>
+                    </div>
+
                     <div className="relative bg-zinc-950 rounded-xl px-4 py-3 border border-zinc-850 focus-within:border-amber-500 transition flex items-center justify-between">
                       <input 
                         type="text" 
@@ -1177,7 +1428,7 @@ export default function CopyTrading({
                       />
                       {orderNumberInput.trim() && (
                         <div className="absolute right-4 flex items-center">
-                          {VALID_ORDER_NUMBERS.includes(orderNumberInput.trim().toUpperCase()) ? (
+                          {VALID_ORDER_NUMBERS.includes(orderNumberInput.trim().toUpperCase()) || (adminSignal && orderNumberInput.trim().toUpperCase() === adminSignal.code.trim().toUpperCase()) ? (
                             <CheckCircle2 size={16} className="text-emerald-500 animate-bounce" />
                           ) : (
                             <XCircle size={16} className="text-rose-500 animate-pulse" />
@@ -1185,22 +1436,23 @@ export default function CopyTrading({
                         </div>
                       )}
                     </div>
+                    
                     {orderNumberError ? (
-                      <p className="text-[9px] text-rose-400 font-bold leading-normal pt-1">
+                      <p className="text-[9px] text-rose-400 font-bold leading-normal pt-0.5">
                         ⚠️ {orderNumberError}
                       </p>
                     ) : (
-                      <p className="text-[8px] text-zinc-500 uppercase leading-normal pt-1">
-                        Use the unique signal code shared in the official Telegram group.
+                      <p className="text-[7.5px] text-zinc-500 uppercase leading-normal pt-0.5">
+                        Type the verification order code shared on Telegram to validate manually.
                       </p>
                     )}
                   </div>
 
                   <button
-                    onClick={handleVerifyAndProceedToSim}
-                    className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-black text-xs uppercase tracking-widest text-center rounded-xl transition duration-200 shadow-[0_4px_12px_rgba(234,179,8,0.2)]"
+                    onClick={() => handleVerifyAndProceedToSim()}
+                    className="w-full py-3 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white font-black text-xs uppercase tracking-widest text-center rounded-xl transition duration-200 cursor-pointer"
                   >
-                    Follow-up
+                    Authorize Manually ➔
                   </button>
                 </div>
               ) : (

@@ -256,15 +256,18 @@ async function triggerSignalCodeBroadcast(
     `⚠️ <i>Each signal code is valid for exactly 1 hour. Unauthorized usage or execution after the window is automatically rejected by the ledger network.</i>\n\n` +
     `🔗 <b>Secure Dashboard:</b> https://ngkexchange.site/?ref=GTX-PJJM7`;
 
-  // 5. Post to Telegram
+  // 5. Post to Telegram with a beautiful holographic card banner
   const cleanedChatId = cleanChannelId(channelId);
-  const telegramUrl = `https://api.telegram.org/bot${botToken}/sendMessage`;
+  const bannerUrl = "https://images.unsplash.com/photo-1640340434855-6084b1f4901c?q=80&w=1200";
+  const telegramUrl = `https://api.telegram.org/bot${botToken}/sendPhoto`;
+  
   const response = await fetch(telegramUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       chat_id: cleanedChatId,
-      text: messageText,
+      photo: bannerUrl,
+      caption: messageText,
       parse_mode: "HTML",
     }),
   });
