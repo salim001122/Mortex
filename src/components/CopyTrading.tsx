@@ -411,20 +411,33 @@ export default function CopyTrading({
           const mins = Math.floor(diffMs / 60000);
           const secs = Math.floor((diffMs % 60000) / 1000);
           
+          let sigIndex = 999;
+          let labelText = 'Test Signal';
+          if (adminSignal.type === 'signal_1') {
+            sigIndex = 0;
+            labelText = 'Signal #1';
+          } else if (adminSignal.type === 'signal_2') {
+            sigIndex = 1;
+            labelText = 'Signal #2';
+          } else if (adminSignal.type === 'signal_3') {
+            sigIndex = 2;
+            labelText = 'Additional Signal';
+          }
+
           setActiveSignalDetails({
             pair: adminSignal.pair || 'BTC/USDT',
             direction: adminSignal.direction || 'BULLISH',
             endTimeMs: endMs,
-            label: 'Admin VIP Signal',
+            label: labelText,
             isActive: true
           });
-          setActiveSignalIndex(999);
-          setCountdownStr(`Admin Signal is ACTIVE! Ends in ${mins}m ${secs}s`);
+          setActiveSignalIndex(sigIndex);
+          setCountdownStr(`${labelText} is ACTIVE! Ends in ${mins}m ${secs}s`);
           return;
         }
       }
 
-      // 2. Check UK scheduled signal times (BST: UTC+1)
+      // 2. If no active adminSignal, compute countdown to next scheduled UK BST times
       const utcHours = now.getUTCHours();
       const utcMinutes = now.getUTCMinutes();
       const utcSeconds = now.getUTCSeconds();
@@ -437,78 +450,32 @@ export default function CopyTrading({
       const s2 = 12 * 3600;
       const s3 = 15 * 3600;
 
-      const activeWindow = 60 * 60; // 1 hour active window
+      setActiveSignalIndex(null);
+      setActiveSignalDetails(null);
+      let nextSignalTimeSeconds = 0;
+      let label = '';
 
-      if (currentUtcSeconds >= s1 && currentUtcSeconds < s1 + activeWindow) {
-        const remainingActive = s1 + activeWindow - currentUtcSeconds;
-        const mins = Math.floor(remainingActive / 60);
-        const secs = remainingActive % 60;
-
-        setActiveSignalDetails({
-          pair: 'BTC/USDT',
-          direction: 'BULLISH',
-          endTimeMs: nowMs + remainingActive * 1000,
-          label: 'Signal #1',
-          isActive: true
-        });
-        setActiveSignalIndex(0);
-        setCountdownStr(`Signal #1 (BTC/USDT BULLISH) is ACTIVE! Ends in ${mins}m ${secs}s`);
-      } else if (currentUtcSeconds >= s2 && currentUtcSeconds < s2 + activeWindow) {
-        const remainingActive = s2 + activeWindow - currentUtcSeconds;
-        const mins = Math.floor(remainingActive / 60);
-        const secs = remainingActive % 60;
-
-        setActiveSignalDetails({
-          pair: 'ETH/USDT',
-          direction: 'BULLISH',
-          endTimeMs: nowMs + remainingActive * 1000,
-          label: 'Signal #2',
-          isActive: true
-        });
-        setActiveSignalIndex(1);
-        setCountdownStr(`Signal #2 (ETH/USDT BULLISH) is ACTIVE! Ends in ${mins}m ${secs}s`);
-      } else if (currentUtcSeconds >= s3 && currentUtcSeconds < s3 + activeWindow) {
-        const remainingActive = s3 + activeWindow - currentUtcSeconds;
-        const mins = Math.floor(remainingActive / 60);
-        const secs = remainingActive % 60;
-
-        setActiveSignalDetails({
-          pair: 'SOL/USDT',
-          direction: 'BEARISH',
-          endTimeMs: nowMs + remainingActive * 1000,
-          label: 'Additional Signal',
-          isActive: true
-        });
-        setActiveSignalIndex(2);
-        setCountdownStr(`Additional Signal (SOL/USDT BEARISH) is ACTIVE! Ends in ${mins}m ${secs}s`);
+      if (currentUtcSeconds < s1) {
+        nextSignalTimeSeconds = s1;
+        label = 'Signal #1';
+      } else if (currentUtcSeconds < s2) {
+        nextSignalTimeSeconds = s2;
+        label = 'Signal #2';
+      } else if (currentUtcSeconds < s3) {
+        nextSignalTimeSeconds = s3;
+        label = 'Additional Signal';
       } else {
-        setActiveSignalIndex(null);
-        setActiveSignalDetails(null);
-        let nextSignalTimeSeconds = 0;
-        let label = '';
-
-        if (currentUtcSeconds < s1) {
-          nextSignalTimeSeconds = s1;
-          label = 'Signal #1';
-        } else if (currentUtcSeconds < s2) {
-          nextSignalTimeSeconds = s2;
-          label = 'Signal #2';
-        } else if (currentUtcSeconds < s3) {
-          nextSignalTimeSeconds = s3;
-          label = 'Additional Signal';
-        } else {
-          nextSignalTimeSeconds = s1 + 24 * 3600;
-          label = 'Signal #1 (Tomorrow)';
-        }
-
-        const diffSeconds = nextSignalTimeSeconds - currentUtcSeconds;
-        const hours = Math.floor(diffSeconds / 3600);
-        const mins = Math.floor((diffSeconds % 3600) / 60);
-        const secs = diffSeconds % 60;
-
-        const hrsStr = hours > 0 ? `${hours}h ` : '';
-        setCountdownStr(`${label} starts in ${hrsStr}${mins}m ${secs}s`);
+        nextSignalTimeSeconds = s1 + 24 * 3600;
+        label = 'Signal #1 (Tomorrow)';
       }
+
+      const diffSeconds = nextSignalTimeSeconds - currentUtcSeconds;
+      const hours = Math.floor(diffSeconds / 3600);
+      const mins = Math.floor((diffSeconds % 3600) / 60);
+      const secs = diffSeconds % 60;
+
+      const hrsStr = hours > 0 ? `${hours}h ` : '';
+      setCountdownStr(`${label} starts in ${hrsStr}${mins}m ${secs}s`);
     };
 
     updateTimeAndCountdown();
@@ -588,8 +555,18 @@ export default function CopyTrading({
     }
 
     const clean = orderNumberInput.trim().toUpperCase();
-    if (!VALID_ORDER_NUMBERS.includes(clean)) {
-      setOrderNumberError("Invalid Order Number. Please check the order number shared in the official group.");
+    if (!adminSignal || !adminSignal.isActive) {
+      setOrderNumberError("No active signal code is currently broadcasting.");
+      return;
+    }
+
+    if (clean !== adminSignal.code.trim().toUpperCase()) {
+      setOrderNumberError("Invalid Order Code. Please check the active code shared in the official group.");
+      return;
+    }
+
+    if (adminSignal.type === 'signal_3' && user.mainBalance < 300) {
+      setOrderNumberError("Additional Trade blocked! This signal requires a minimum main balance of 300 USDT.");
       return;
     }
 

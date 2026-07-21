@@ -13,3 +13,27 @@ export const VALID_ORDER_NUMBERS = [
   "NGK1964", "NGK9470", "NGK3336", "NGK3119", "NGK5642", "NGK9852", "NGK8347", "NGK4593",
   "NGK3266", "NGK9348", "NGK9085", "NGK2489"
 ];
+
+/**
+ * Generates 5 stable, deterministic daily signal codes for a given date (YYYY-MM-DD).
+ */
+export function getDailyCodesForDate(dateStr: string): string[] {
+  let hash = 0;
+  for (let i = 0; i < dateStr.length; i++) {
+    hash = dateStr.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  hash = Math.abs(hash);
+
+  const dayCodes: string[] = [];
+  const pool = [...VALID_ORDER_NUMBERS];
+  
+  for (let s = 0; s < 5; s++) {
+    if (pool.length === 0) break;
+    const index = (hash + s * 23) % pool.length;
+    dayCodes.push(pool[index]);
+    pool.splice(index, 1);
+  }
+  
+  return dayCodes;
+}
+

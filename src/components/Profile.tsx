@@ -333,6 +333,9 @@ export default function Profile({
     verified: { text: 'Verified', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/25' }
   };
 
+  const kycStatus = user.kycStatus || 'not_submitted';
+  const currentKyc = kycStatusDisplay[kycStatus as keyof typeof kycStatusDisplay] || kycStatusDisplay.not_submitted;
+
   const formattedJoinDate = user.createdAt 
     ? new Date(user.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
     : 'July 2026';
@@ -392,8 +395,8 @@ export default function Profile({
               <span className="text-[9px] font-black px-2 py-0.5 rounded-md bg-cyan-500/10 text-cyan-400 border border-cyan-500/25 uppercase tracking-wider font-mono">
                 {user.tier} Pass
               </span>
-              <span className={`text-[9px] font-black px-2 py-0.5 rounded-md border uppercase tracking-wider font-mono ${kycStatusDisplay[user.kycStatus].color}`}>
-                {kycStatusDisplay[user.kycStatus].text}
+              <span className={`text-[9px] font-black px-2 py-0.5 rounded-md border uppercase tracking-wider font-mono ${currentKyc.color}`}>
+                {currentKyc.text}
               </span>
             </div>
           </div>
@@ -521,10 +524,10 @@ export default function Profile({
           <div 
             id="kyc-verification-card-btn"
             onClick={() => {
-              if (user.kycStatus === 'not_submitted') {
+              if (kycStatus === 'not_submitted') {
                 setKycModalOpen(true);
               } else {
-                onShowToast(`Your identity verification status is currently: ${user.kycStatus.toUpperCase()}`, 'info');
+                onShowToast(`Your identity verification status is currently: ${kycStatus.toUpperCase()}`, 'info');
               }
             }}
             className="p-4 flex items-center justify-between hover:bg-zinc-900/40 cursor-pointer transition duration-150"
@@ -540,8 +543,8 @@ export default function Profile({
             </div>
             
             <div className="flex items-center gap-1.5">
-              <span className={`text-[8px] font-bold px-2 py-0.5 rounded-full border uppercase font-mono tracking-wider ${kycStatusDisplay[user.kycStatus].color}`}>
-                {kycStatusDisplay[user.kycStatus].text}
+              <span className={`text-[8px] font-bold px-2 py-0.5 rounded-full border uppercase font-mono tracking-wider ${currentKyc.color}`}>
+                {currentKyc.text}
               </span>
               <ChevronRight size={13} className="text-zinc-600" />
             </div>

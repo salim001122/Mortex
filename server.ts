@@ -171,6 +171,116 @@ async function sendTelegramBroadcast(botToken: string, channelId: string, templa
   return { ok: true, data, index };
 }
 
+const SERVER_VALID_ORDER_NUMBERS = [
+  "NGK6217", "NGK4802", "NGK8943", "NGK1359", "NGK7210", "NGK5543", "NGK1902", "NGK8834",
+  "NGK1964", "NGK9470", "NGK3336", "NGK3119", "NGK5642", "NGK9852", "NGK8347", "NGK4593",
+  "NGK3266", "NGK9348", "NGK9085", "NGK2489"
+];
+
+async function triggerSignalCodeBroadcast(
+  type: "signal_1" | "signal_2" | "signal_3" | "test",
+  customPair?: string,
+  customDirection?: string
+) {
+  // 1. Fetch Telegram Config
+  const snap = await getDoc(doc(db, "system", "telegram_config"));
+  if (!snap.exists()) {
+    throw new Error("Telegram configuration does not exist in Firestore.");
+  }
+  const config = snap.data();
+  const botToken = config.botToken || "";
+  const channelId = config.channelId || "";
+  if (!botToken || !channelId) {
+    throw new Error("Missing botToken or channelId configuration.");
+  }
+
+  // 2. Select details
+  const code = SERVER_VALID_ORDER_NUMBERS[Math.floor(Math.random() * SERVER_VALID_ORDER_NUMBERS.length)];
+  const startTime = new Date();
+  const endTime = new Date(startTime.getTime() + 60 * 60 * 1000); // 1 hour valid window
+  
+  let pair = customPair || "BTC/USDT";
+  let direction = customDirection || "BULLISH";
+  let titleLabel = "Signal #1 (Main Signal)";
+
+  if (type === "signal_2") {
+    pair = customPair || "ETH/USDT";
+    direction = customDirection || "BULLISH";
+    titleLabel = "Signal #2 (Afternoon Signal)";
+  } else if (type === "signal_3") {
+    pair = customPair || "SOL/USDT";
+    direction = customDirection || "BEARISH";
+    titleLabel = "Additional Signal (Minimum Balance $300)";
+  } else if (type === "test") {
+    pair = customPair || "BTC/USDT";
+    direction = customDirection || "BULLISH";
+    titleLabel = "TEST SIGNAL (Random Test)";
+  }
+
+  // 3. Save Active Signal document in system/copyTradeSignal
+  const signalId = "SIG-" + Math.random().toString(36).substring(2, 7).toUpperCase();
+  const signalData = {
+    id: signalId,
+    code: code,
+    type: type,
+    pair: pair,
+    direction: direction,
+    startTime: startTime.toISOString(),
+    endTime: endTime.toISOString(),
+    isActive: true,
+    timestamp: startTime.toISOString()
+  };
+  await setDoc(doc(db, "system", "copyTradeSignal"), signalData);
+
+  // 4. Format Beautiful HTML Telegram Post
+  const directionEmoji = direction === "BULLISH" ? "🟢 BULLISH (BUY / CALL)" : "🔴 BEARISH (SELL / PUT)";
+
+  const messageText = 
+    `📊 <b>NGK CRYPTOGRAPHIC COPY-TRADING PLATFORM</b> 📊\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+    `🌐 <b>OFFICIAL BLOCKCHAIN NODE SIGNAL BROADCAST</b>\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+    `🔔 <b>NEW VIP COPY-TRADE SIGNAL DETECTED!</b> 🚀\n` +
+    `We have successfully synchronized with the UK high-frequency nodes.\n\n` +
+    `📈 <b>Session:</b> <code>${titleLabel}</code>\n` +
+    `🎯 <b>Asset Pair:</b> <code>${pair}</code>\n` +
+    `📉 <b>Market Bias:</b> <code>${directionEmoji}</code>\n` +
+    `🔑 <b>Verification Order Code:</b> <code>${code}</code>\n\n` +
+    `⏱️ <b>SESSION WINDOW:</b> <b>1 Hour Only</b>\n` +
+    `🕒 <b>Status:</b> ACTIVE (Expires in 60 minutes)\n\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+    `💡 <b>HOW TO DEPLOY LICENSE:</b>\n` +
+    `1️⃣ Open the <b>NGK Copy-Trading Panel</b>.\n` +
+    `2️⃣ Enter the <b>Verification Order Code</b> shown above.\n` +
+    `3️⃣ Authorize deployment. Settle and claim <b>+2% profit</b> in 30 minutes!\n\n` +
+    `⚠️ <i>Each signal code is valid for exactly 1 hour. Unauthorized usage or execution after the window is automatically rejected by the ledger network.</i>\n\n` +
+    `🔗 <b>Secure Dashboard:</b> https://ngkexchange.site/?ref=GTX-PJJM7`;
+
+  // 5. Post to Telegram
+  const cleanedChatId = cleanChannelId(channelId);
+  const telegramUrl = `https://api.telegram.org/bot${botToken}/sendMessage`;
+  const response = await fetch(telegramUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: cleanedChatId,
+      text: messageText,
+      parse_mode: "HTML",
+    }),
+  });
+
+  const data = await response.json();
+  if (!response.ok || !data.ok) {
+    throw new Error(data.description || "Failed to post message to Telegram channel.");
+  }
+
+  return {
+    success: true,
+    signal: signalData,
+    telegramResponse: data
+  };
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -334,10 +444,61 @@ async function startServer() {
     }
   });
 
-  // Automated Poster Scheduler Heartbeat Loop
-  // Runs every 60 seconds. Checks if the scheduled "nextPostAt" time is surpassed.
+  // API Route: Trigger a direct VIP Copy Trading Signal
+  app.post("/api/telegram-broadcast-signal", async (req, res) => {
+    try {
+      const { type, pair, direction } = req.body;
+      if (!type || !["signal_1", "signal_2", "signal_3", "test"].includes(type)) {
+        return res.status(400).json({ ok: false, error: "Invalid signal type requested." });
+      }
+
+      console.log(`[Manual Signal API] Triggering signal broadcast type=${type}, pair=${pair}, direction=${direction}`);
+      const result = await triggerSignalCodeBroadcast(type, pair, direction);
+      return res.json({ ok: true, message: "VIP Signal code broadcasted successfully!", ...result });
+    } catch (err: any) {
+      console.error("Manual Signal Broadcast Error:", err);
+      return res.status(500).json({ ok: false, error: err.message || "Failed to broadcast VIP signal." });
+    }
+  });
+
+  // Automated Poster Scheduler & UK Signals Heartbeat Loop
+  // Runs every 60 seconds. Checks both scheduled times & marketing post schedule.
+  let lastTriggeredMinute = "";
+
   setInterval(async () => {
     try {
+      const now = new Date();
+      const currentUtcHours = now.getUTCHours();
+      const currentUtcMinutes = now.getUTCMinutes();
+      
+      const year = now.getUTCFullYear();
+      const month = String(now.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(now.getUTCDate()).padStart(2, '0');
+      const hourStr = String(currentUtcHours).padStart(2, '0');
+      const minStr = String(currentUtcMinutes).padStart(2, '0');
+      const currentMinuteStr = `${year}-${month}-${day}-${hourStr}-${minStr}`;
+
+      // 1. Check UK copy trade scheduled signals (BST = UTC+1)
+      // Signal 1: 11:00 AM BST = 10:00 UTC
+      // Signal 2: 1:00 PM BST = 12:00 UTC
+      // Additional Signal (Signal 3): 4:00 PM BST = 15:00 UTC
+      if (currentMinuteStr !== lastTriggeredMinute) {
+        if (currentUtcHours === 10 && currentUtcMinutes === 0) {
+          lastTriggeredMinute = currentMinuteStr;
+          console.log(`[Scheduled Signal] Triggering Signal 1 at ${now.toISOString()}`);
+          await triggerSignalCodeBroadcast("signal_1").catch(console.error);
+        } else if (currentUtcHours === 12 && currentUtcMinutes === 0) {
+          lastTriggeredMinute = currentMinuteStr;
+          console.log(`[Scheduled Signal] Triggering Signal 2 at ${now.toISOString()}`);
+          await triggerSignalCodeBroadcast("signal_2").catch(console.error);
+        } else if (currentUtcHours === 15 && currentUtcMinutes === 0) {
+          lastTriggeredMinute = currentMinuteStr;
+          console.log(`[Scheduled Signal] Triggering Signal 3 at ${now.toISOString()}`);
+          await triggerSignalCodeBroadcast("signal_3").catch(console.error);
+        }
+      }
+
+      // 2. Check Marketing educational auto-poster schedule
       const snap = await getDoc(doc(db, "system", "telegram_config"));
       if (!snap.exists()) return;
 
@@ -345,17 +506,17 @@ async function startServer() {
       const { autoPosterActive, botToken, channelId, autoPosterInterval } = config;
       if (!autoPosterActive || !botToken || !channelId) return;
 
-      const now = Date.now();
+      const nowMs = Date.now();
       let nextPostAt = config.nextPostAt;
 
       // If nextPostAt is empty/missing, initialize it to the current time to trigger immediately
       if (!nextPostAt) {
-        nextPostAt = new Date(now).toISOString();
+        nextPostAt = new Date(nowMs).toISOString();
         await setDoc(doc(db, "system", "telegram_config"), { nextPostAt }, { merge: true });
       }
 
       const nextPostMs = new Date(nextPostAt).getTime();
-      if (now >= nextPostMs) {
+      if (nowMs >= nextPostMs) {
         const lastPosterIndex = config.lastPosterIndex || 0;
         console.log(`[AutoPoster] Heartbeat matches schedule. Executing post index ${lastPosterIndex} to channel ${channelId}`);
         
@@ -365,19 +526,19 @@ async function startServer() {
         // Schedule the subsequent post
         const intervalHrs = autoPosterInterval || 2.5;
         const nextIndex = (lastPosterIndex + 1) % TELEGRAM_TEMPLATES.length;
-        const futurePostAt = new Date(now + intervalHrs * 60 * 60 * 1000).toISOString();
+        const futurePostAt = new Date(nowMs + intervalHrs * 60 * 60 * 1000).toISOString();
 
         await setDoc(doc(db, "system", "telegram_config"), {
           lastPosterIndex: nextIndex,
-          lastPostedAt: new Date(now).toISOString(),
+          lastPostedAt: new Date(nowMs).toISOString(),
           nextPostAt: futurePostAt,
-          updatedAt: new Date(now).toISOString()
+          updatedAt: new Date(nowMs).toISOString()
         }, { merge: true });
 
         console.log(`[AutoPoster] Post successful. Next post scheduled for ${futurePostAt} (Index ${nextIndex})`);
       }
     } catch (err: any) {
-      console.error("[AutoPoster Error]:", err.message || err);
+      console.error("[AutoPoster/Signal Error]:", err.message || err);
     }
   }, 60000); // 1 minute heartbeat
 

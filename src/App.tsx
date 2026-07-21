@@ -1016,20 +1016,41 @@ export default function App() {
     }
 
     const cleanCode = orderNumber.trim().toUpperCase();
-    if (!VALID_ORDER_NUMBERS.includes(cleanCode)) {
-      showToast('Invalid Order Number. Please check the order number shared in the official group.', 'error');
+
+    // 1. Check if there is an active signal and it has not expired
+    const nowMs = Date.now();
+    const startMs = adminSignal?.startTime ? new Date(adminSignal.startTime).getTime() : 0;
+    const endMs = adminSignal?.endTime ? new Date(adminSignal.endTime).getTime() : 0;
+    const isSignalActiveNow = adminSignal && adminSignal.isActive && nowMs >= startMs && nowMs <= endMs;
+
+    if (!isSignalActiveNow) {
+      showToast('Copy trade blocked! No active signal code is currently broadcasting or the previous code has expired (1-hour validity).', 'error');
       return false;
     }
 
+    if (cleanCode !== adminSignal.code.trim().toUpperCase()) {
+      showToast('Invalid Order Code. Please check the active order code shared in the official group.', 'error');
+      return false;
+    }
+
+    // 2. Check if this is the additional signal (Signal 3), which requires minimum $300 balance
+    if (adminSignal.type === 'signal_3') {
+      if (currentUser.mainBalance < 300) {
+        showToast('Additional Trade blocked! Signal #3 is only permitted for VIP users with a main balance of 300 USDT or more.', 'error');
+        return false;
+      }
+    }
+
     try {
-      // 1. Verify "1 code 1 time usable" (globally unique code)
+      // 1. Verify that this specific user has not already used this order/signal code
       const qCode = query(
-        collection(db, 'copy_trades'),
+        collection(db, 'users', currentUser.uid, 'transactions'),
+        where('type', '==', TransactionType.CopyTrade),
         where('orderNumber', '==', cleanCode)
       );
       const codeSnap = await getDocs(qCode);
       if (!codeSnap.empty) {
-        showToast('This order number has already been used. Please use a fresh order number from the group.', 'error');
+        showToast('You have already deployed a license with this signal code. Please wait for the next signal code.', 'error');
         return false;
       }
 

@@ -11,7 +11,9 @@ import {
   Shield,
   User as UserIcon,
   HelpCircle,
-  Percent
+  Percent,
+  Calendar,
+  Copy
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -29,6 +31,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { User, Transaction, TransactionStatus, TransactionType } from '../types';
+import { getDailyCodesForDate } from '../lib/orderCodes';
 
 interface AdminPanelProps {
   onNavigate: (screen: string) => void;
@@ -49,6 +52,7 @@ export default function AdminPanel({ onNavigate, currentUser, showToast }: Admin
   const [signalPair, setSignalPair] = useState('BTC/USDT');
   const [signalDir, setSignalDir] = useState('BULLISH');
   const [signalTrades, setSignalTrades] = useState<any[]>([]);
+  const [selectedDateIndex, setSelectedDateIndex] = useState(1); // Default to Today (index 1)
 
   // Load transactions in real-time
   useEffect(() => {
@@ -294,81 +298,33 @@ export default function AdminPanel({ onNavigate, currentUser, showToast }: Admin
     }
   };
 
-  // Action: Broadcast VIP Signal
-  const handleBroadcastSignal = async () => {
-    try {
-      const signalId = 'SIG-' + Math.random().toString(36).substring(2, 7).toUpperCase();
-      const startTime = new Date().toISOString();
-      const endTime = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour trade window!
+  const [isBroadcastingSignal, setIsBroadcastingSignal] = useState<boolean>(false);
 
-      await setDoc(doc(db, 'system', 'copyTradeSignal'), {
-        id: signalId,
-        pair: signalPair,
-        direction: signalDir,
-        startTime,
-        endTime,
-        isActive: true,
-        timestamp: startTime
+  // Action: Broadcast VIP Signal via Server Side Telegram Bot API
+  const handleDeploySignalType = async (type: 'signal_1' | 'signal_2' | 'signal_3' | 'test') => {
+    setIsBroadcastingSignal(true);
+    try {
+      const response = await fetch('/api/telegram-broadcast-signal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type,
+          pair: signalPair,
+          direction: signalDir
+        })
       });
 
-      showToast(`VIP Signal broadcasted successfully! Active for 1 hour.`, 'success');
-
-      // Dispatch real-time Telegram alert notification to connected subscribers
-      if (notifyOnTelegram) {
-        const botToken = telegramBotToken.trim();
-        if (botToken) {
-          try {
-            const usersSnap = await getDocs(collection(db, 'users'));
-            const connectedUsers: { chatId: string; username: string }[] = [];
-            usersSnap.forEach((userDoc) => {
-              const uData = userDoc.data();
-              if (uData.telegramChatId && uData.telegramAlertsActive) {
-                connectedUsers.push({
-                  chatId: uData.telegramChatId,
-                  username: uData.telegramUsername || 'Investor'
-                });
-              }
-            });
-
-            if (connectedUsers.length > 0) {
-              showToast(`Dispatching alerts to ${connectedUsers.length} connected Telegram users...`, 'info');
-              
-              let successCount = 0;
-              for (const tgUser of connectedUsers) {
-                try {
-                  const directionLabel = signalDir === 'BULLISH' ? '🟢 BULLISH (BUY / CALL)' : '🔴 BEARISH (SELL / PUT)';
-                  const messageText = `⚡ <b>NEW VIP COPY-TRADE SIGNAL BROADCASTED!</b>\n\n🎯 <b>Asset Pair:</b> ${signalPair}\n📈 <b>Bias Direction:</b> ${directionLabel}\n⏱ <b>Active Window:</b> 1 Hour (Settle in 30m)\n\nDear @${tgUser.username}, the UK-scheduled nodes are active. Deploy your licenses immediately to capitalize on this trade! 🚀`;
-
-                  const res = await fetch('/api/telegram-proxy', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      botToken: botToken,
-                      chatId: tgUser.chatId,
-                      text: messageText
-                    })
-                  });
-                  const resData = await res.json();
-                  if (resData.ok) successCount++;
-                } catch (sendErr) {
-                  console.error("Error sending signal alert to Telegram user:", tgUser.chatId, sendErr);
-                }
-              }
-              showToast(`Telegram Broadcast Complete: ${successCount}/${connectedUsers.length} alerts delivered.`, 'success');
-            } else {
-              showToast("No active connected Telegram users found.", "info");
-            }
-          } catch (fetchErr) {
-            console.error("Error dispatching Telegram alerts:", fetchErr);
-            showToast("Failed to fetch subscribed Telegram users.", "warning");
-          }
-        } else {
-          showToast("Telegram Bot Token is empty. Alert delivery skipped.", "warning");
-        }
+      const data = await response.json();
+      if (response.ok && data.ok) {
+        showToast(`VIP Signal Code [${data.signal.code}] broadcasted & scheduled successfully! Telegram card dispatched.`, 'success');
+      } else {
+        throw new Error(data.error || 'Failed to trigger copy trading signal broadcast.');
       }
-    } catch (err) {
-      console.error("Error broadcasting signal:", err);
-      showToast("Failed to broadcast VIP signal.", "error");
+    } catch (err: any) {
+      console.error("Signal broadcast dispatch error:", err);
+      showToast(`Broadcast Failed: ${err.message || err}`, 'error');
+    } finally {
+      setIsBroadcastingSignal(false);
     }
   };
 
@@ -582,12 +538,13 @@ export default function AdminPanel({ onNavigate, currentUser, showToast }: Admin
       <div className="bg-zinc-900/40 border border-zinc-850 rounded-2xl p-4.5 space-y-4 shrink-0">
         <div className="flex justify-between items-center border-b border-zinc-800 pb-2">
           <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider font-mono flex items-center gap-1.5">
-            <TrendingUp size={12} className="animate-pulse" />
-            VIP COPY TRADE SIGNAL CONTROL
+            <TrendingUp size={12} className="animate-pulse text-cyan-400" />
+            📡 UK COPY-TRADE SIGNAL DISPATCHER (1-HOUR VALIDITY)
           </span>
           {activeSignal && activeSignal.isActive ? (
-            <span className="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded font-mono font-bold animate-pulse">
-              LIVE BROADCASTING
+            <span className="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded font-mono font-bold animate-pulse flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              LIVE {activeSignal.type?.toUpperCase()} ACTIVE
             </span>
           ) : (
             <span className="text-[9px] bg-zinc-800 text-zinc-500 border border-zinc-700 px-2 py-0.5 rounded font-mono font-bold">
@@ -596,14 +553,18 @@ export default function AdminPanel({ onNavigate, currentUser, showToast }: Admin
           )}
         </div>
 
-        {/* Create Broadcast form / Active Status */}
-        <div className="grid grid-cols-2 gap-3.5 font-mono text-[10px]">
+        <p className="text-[8.5px] text-zinc-500 leading-normal font-mono">
+          Each signal generated below is valid for exactly <b>1 Hour</b>. The bot will automatically publish a beautiful visual card template directly to the configured Telegram channel.
+        </p>
+
+        {/* Optional Customizer for overriding next broadcast */}
+        <div className="grid grid-cols-2 gap-3.5 font-mono text-[9px] border-b border-zinc-850/50 pb-3">
           <div>
-            <label className="text-zinc-500 font-bold block uppercase mb-1.5">Select Asset Pair</label>
+            <label className="text-zinc-500 font-bold block uppercase mb-1">Target Asset Pair (Customizer)</label>
             <select
               value={signalPair}
               onChange={(e) => setSignalPair(e.target.value)}
-              className="w-full bg-zinc-950 border border-zinc-850 text-white rounded-lg px-3 py-2 outline-none cursor-pointer focus:border-cyan-500/50"
+              className="w-full bg-zinc-950 border border-zinc-850 text-white rounded-lg px-2.5 py-1.5 outline-none cursor-pointer focus:border-cyan-500/50 text-[9px]"
             >
               <option value="BTC/USDT">BTC/USDT</option>
               <option value="ETH/USDT">ETH/USDT</option>
@@ -615,19 +576,19 @@ export default function AdminPanel({ onNavigate, currentUser, showToast }: Admin
           </div>
 
           <div>
-            <label className="text-zinc-500 font-bold block uppercase mb-1.5">Forecast Direction</label>
-            <div className="flex gap-1 bg-zinc-950 p-1 border border-zinc-850 rounded-lg">
+            <label className="text-zinc-500 font-bold block uppercase mb-1">Forecast Direction</label>
+            <div className="flex gap-1 bg-zinc-950 p-0.5 border border-zinc-850 rounded-lg">
               <button
                 type="button"
                 onClick={() => setSignalDir('BULLISH')}
-                className={`flex-1 py-1.5 text-[9px] font-bold rounded transition ${signalDir === 'BULLISH' ? 'bg-emerald-500 text-zinc-950 font-black' : 'text-zinc-500'}`}
+                className={`flex-1 py-1 text-[8px] font-bold rounded transition ${signalDir === 'BULLISH' ? 'bg-emerald-500 text-zinc-950 font-black' : 'text-zinc-500'}`}
               >
                 BULLISH
               </button>
               <button
                 type="button"
                 onClick={() => setSignalDir('BEARISH')}
-                className={`flex-1 py-1.5 text-[9px] font-bold rounded transition ${signalDir === 'BEARISH' ? 'bg-rose-500 text-zinc-950 font-black' : 'text-zinc-500'}`}
+                className={`flex-1 py-1 text-[8px] font-bold rounded transition ${signalDir === 'BEARISH' ? 'bg-rose-500 text-zinc-950 font-black' : 'text-zinc-500'}`}
               >
                 BEARISH
               </button>
@@ -635,30 +596,68 @@ export default function AdminPanel({ onNavigate, currentUser, showToast }: Admin
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2.5 pt-1">
+        {/* Action buttons grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <button
-            onClick={handleBroadcastSignal}
-            className="py-2.5 bg-cyan-500 hover:bg-cyan-400 text-zinc-950 text-[10px] font-black uppercase tracking-wider rounded-xl font-mono transition text-center shadow-lg flex items-center justify-center gap-1.5"
+            type="button"
+            onClick={() => handleDeploySignalType('signal_1')}
+            disabled={isBroadcastingSignal}
+            className="py-2 px-3 bg-gradient-to-r from-emerald-500/10 to-emerald-500/20 hover:from-emerald-500/20 hover:to-emerald-500/30 border border-emerald-500/30 text-emerald-400 hover:text-emerald-300 text-[9px] font-bold uppercase tracking-wider rounded-xl font-mono transition text-left flex items-center justify-between cursor-pointer"
           >
-            🟢 BROADCAST SIGNAL (1H)
+            <span>🟢 Deploy Signal #1 (11:00 BST)</span>
+            <span className="text-[7px] bg-emerald-500/10 border border-emerald-500/20 px-1 py-0.5 rounded text-emerald-400 font-mono">1st Trade</span>
           </button>
+
           <button
+            type="button"
+            onClick={() => handleDeploySignalType('signal_2')}
+            disabled={isBroadcastingSignal}
+            className="py-2 px-3 bg-gradient-to-r from-sky-500/10 to-sky-500/20 hover:from-sky-500/20 hover:to-sky-500/30 border border-sky-500/30 text-sky-400 hover:text-sky-300 text-[9px] font-bold uppercase tracking-wider rounded-xl font-mono transition text-left flex items-center justify-between cursor-pointer"
+          >
+            <span>🔵 Deploy Signal #2 (13:00 BST)</span>
+            <span className="text-[7px] bg-sky-500/10 border border-sky-500/20 px-1 py-0.5 rounded text-sky-400 font-mono">2nd Trade</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleDeploySignalType('signal_3')}
+            disabled={isBroadcastingSignal}
+            className="py-2 px-3 bg-gradient-to-r from-purple-500/10 to-purple-500/20 hover:from-purple-500/20 hover:to-purple-500/30 border border-purple-500/30 text-purple-400 hover:text-purple-300 text-[9px] font-bold uppercase tracking-wider rounded-xl font-mono transition text-left flex items-center justify-between cursor-pointer"
+          >
+            <span>🟣 Deploy Additional Signal (Min $300)</span>
+            <span className="text-[7px] bg-purple-500/10 border border-purple-500/20 px-1 py-0.5 rounded text-purple-400 font-mono">3rd Trade</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleDeploySignalType('test')}
+            disabled={isBroadcastingSignal}
+            className="py-2 px-3 bg-gradient-to-r from-amber-500/10 to-amber-500/20 hover:from-amber-500/20 hover:to-amber-500/30 border border-amber-500/30 text-amber-400 hover:text-amber-300 text-[9px] font-bold uppercase tracking-wider rounded-xl font-mono transition text-left flex items-center justify-between cursor-pointer"
+          >
+            <span>🧪 Trigger Test Signal (Random Code)</span>
+            <span className="text-[7px] bg-amber-500/10 border border-amber-500/20 px-1 py-0.5 rounded text-amber-400 font-mono">Test Now</span>
+          </button>
+        </div>
+
+        <div className="pt-1.5 flex justify-end">
+          <button
+            type="button"
             onClick={handleEndSignal}
             disabled={!activeSignal || !activeSignal.isActive}
-            className={`py-2.5 text-[10px] font-black uppercase tracking-wider rounded-xl font-mono transition text-center shadow-lg flex items-center justify-center gap-1.5 ${activeSignal && activeSignal.isActive ? 'bg-rose-500 hover:bg-rose-400 text-zinc-950' : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'}`}
+            className={`px-3 py-1.5 text-[8px] font-black uppercase tracking-wider rounded-lg font-mono transition text-center shadow-lg flex items-center gap-1 cursor-pointer ${activeSignal && activeSignal.isActive ? 'bg-rose-500 hover:bg-rose-400 text-zinc-950' : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'}`}
           >
-            🔴 CANCEL / END SIGNAL
+            🛑 Stop / Terminate Active Signal
           </button>
         </div>
 
         {/* Current Active Broadcast details box */}
         {activeSignal && activeSignal.isActive && (
-          <div className="bg-zinc-950/90 border border-zinc-850 rounded-xl p-3 space-y-2 font-mono text-[9px]">
+          <div className="bg-zinc-950/95 border border-zinc-850 rounded-xl p-3 space-y-2 font-mono text-[9px]">
             <span className="text-zinc-400 font-bold uppercase tracking-wider block border-b border-zinc-900 pb-1">Broadcast Specifications:</span>
             <div className="grid grid-cols-2 gap-2 text-zinc-400">
               <div>
-                <span>Order/Signal Number:</span>
-                <p className="text-white font-bold text-xs mt-0.5">{activeSignal.id}</p>
+                <span>Active Code:</span>
+                <p className="text-white font-black text-xs mt-0.5 select-all select-text tracking-wider">{activeSignal.code}</p>
               </div>
               <div>
                 <span>Traded Asset Pair:</span>
@@ -672,11 +671,11 @@ export default function AdminPanel({ onNavigate, currentUser, showToast }: Admin
               </div>
               <div>
                 <span>Active Window:</span>
-                <p className="text-white font-bold mt-0.5">1 Hour (Settle in 30m)</p>
+                <p className="text-white font-bold mt-0.5">1 Hour (Expires {new Date(activeSignal.endTime).toLocaleTimeString()})</p>
               </div>
               <div className="col-span-2 text-zinc-500 text-[8px] border-t border-zinc-900 pt-1 flex justify-between items-center">
-                <span>Start: {new Date(activeSignal.startTime).toLocaleString()}</span>
-                <span>End: {new Date(activeSignal.endTime).toLocaleString()}</span>
+                <span>Start: {new Date(activeSignal.startTime).toLocaleTimeString()}</span>
+                <span>Type: {activeSignal.type?.toUpperCase()}</span>
               </div>
             </div>
           </div>
