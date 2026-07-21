@@ -1054,30 +1054,15 @@ export default function App() {
         return false;
       }
 
-      // Query past 24 hour copy trades to enforce daily limits
+      // Query past copy trades for count checks
       const q = query(
         collection(db, 'users', currentUser.uid, 'transactions'),
         where('type', '==', TransactionType.CopyTrade)
       );
       const snapshot = await getDocs(q);
-      const nowMs = Date.now();
-      const userCopyTradesLast24h = snapshot.docs
-        .map(doc => doc.data() as Transaction)
-        .filter(t => (nowMs - new Date(t.timestamp).getTime()) < 24 * 60 * 60 * 1000);
-
-      // Check trade limits:
-      // - 2 copy trades allowed. 3rd copy trade only if balance is > 300 USDT
-      const totalTradesCount = userCopyTradesLast24h.length;
-      if (totalTradesCount === 2) {
-        if (currentUser.mainBalance <= 300) {
-          showToast('Daily limit of 2 trades reached. A 3rd trade is only permitted for users with a main balance greater than 300 USDT.', 'warning');
-          return false;
-        }
-      } else if (totalTradesCount >= 3) {
-        showToast('Maximum limit of 3 copy trades per 24 hours reached.', 'warning');
-        return false;
-      }
-
+      
+      // Daily unlimited copy trades enabled for all users. No 24-hour limits.
+      const totalTradesCount = snapshot.docs.length;
       const isSecondTrade = totalTradesCount === 1;
 
       // Adjust user VIP Rank dynamically based on total Volume
