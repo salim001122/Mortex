@@ -1259,7 +1259,7 @@ export default function CopyTrading({
                   <div className="space-y-1.5">
                     <div className="flex justify-between items-center text-[9px] text-zinc-500 font-bold uppercase font-mono">
                       <label>Deploy Investment Size</label>
-                      <span>Min: 30 USDT</span>
+                      <span>Min: 100 USDT</span>
                     </div>
 
                     <div className="relative bg-zinc-950 rounded-xl px-4 py-3 border border-zinc-850 focus-within:border-cyan-500 transition">
@@ -1267,11 +1267,11 @@ export default function CopyTrading({
                         <img src="https://assets.coingecko.com/coins/images/325/large/Tether.png" alt="USDT" className="w-5 h-5 rounded-full" />
                         <input 
                           type="number" 
-                          min={30}
+                          min={100}
                           value={investmentAmt}
                           onChange={(e) => setInvestmentAmt(e.target.value)}
                           className="w-full bg-transparent text-white font-bold text-sm outline-none border-none placeholder-zinc-700 font-mono focus:ring-0 p-0"
-                          placeholder="30.00"
+                          placeholder="100.00"
                         />
                         <span className="text-[10px] text-zinc-500 font-bold font-mono">USDT</span>
                       </div>
@@ -1281,7 +1281,7 @@ export default function CopyTrading({
                   {/* Percentage shortcuts */}
                   <div className="grid grid-cols-4 gap-1.5">
                     {[0.25, 0.50, 0.75, 1.0].map((percent) => {
-                      const amount = Math.max(30, Math.floor(user.mainBalance * percent));
+                      const amount = Math.max(100, Math.floor(user.mainBalance * percent));
                       return (
                         <button
                           key={percent}
@@ -1310,18 +1310,18 @@ export default function CopyTrading({
                       <AlertTriangle size={12} className="shrink-0" />
                       <span>Insufficient main balance (${user.mainBalance.toFixed(2)} USDT)</span>
                     </div>
-                  ) : parseFloat(investmentAmt) < 30 ? (
+                  ) : parseFloat(investmentAmt) < 100 ? (
                     <div className="bg-amber-500/10 border border-amber-500/20 text-amber-400 p-2.5 rounded-xl text-[9px] flex items-center gap-1.5 font-mono uppercase font-bold">
                       <AlertTriangle size={12} className="shrink-0" />
-                      <span>Minimum deposit size is 30 USDT</span>
+                      <span>Minimum deposit size is 100 USDT</span>
                     </div>
                   ) : null}
 
                   <button
-                    disabled={isNaN(parseFloat(investmentAmt)) || parseFloat(investmentAmt) < 30 || parseFloat(investmentAmt) > user.mainBalance}
+                    disabled={isNaN(parseFloat(investmentAmt)) || parseFloat(investmentAmt) < 100 || parseFloat(investmentAmt) > user.mainBalance}
                     onClick={handleProceedToOrderValidation}
                     className={`w-full py-3 rounded-xl font-bold text-xs uppercase tracking-wider text-center transition duration-200 font-mono ${
-                      isNaN(parseFloat(investmentAmt)) || parseFloat(investmentAmt) < 30 || parseFloat(investmentAmt) > user.mainBalance
+                      isNaN(parseFloat(investmentAmt)) || parseFloat(investmentAmt) < 100 || parseFloat(investmentAmt) > user.mainBalance
                         ? 'bg-zinc-800 text-zinc-500 border border-zinc-850 cursor-not-allowed'
                         : 'bg-cyan-500 text-zinc-950 hover:bg-cyan-400 font-black'
                     }`}

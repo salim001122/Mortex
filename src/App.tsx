@@ -1041,6 +1041,16 @@ export default function App() {
       }
     }
 
+    if (amount < 100) {
+      showToast('Minimum copy trading amount is 100 USDT.', 'error');
+      return false;
+    }
+
+    if (currentUser.mainBalance < amount) {
+      showToast('Insufficient main balance. Please deposit funds.', 'error');
+      return false;
+    }
+
     try {
       // 1. Verify that this specific user has not already used this order/signal code
       const qCode = query(
@@ -1061,7 +1071,17 @@ export default function App() {
       );
       const snapshot = await getDocs(q);
       
-      // Daily unlimited copy trades enabled for all users. No 24-hour limits.
+      // Calculate copy trades placed in the last 24 hours
+      const nowTimeMs = Date.now();
+      const userCopyTradesLast24h = snapshot.docs
+        .map(doc => doc.data() as Transaction)
+        .filter(t => (nowTimeMs - new Date(t.timestamp).getTime()) < 24 * 60 * 60 * 1000);
+
+      if (userCopyTradesLast24h.length >= 2) {
+        showToast('Daily limit of 2 copy trades reached. Please wait for the next 24-hour cycle to participate.', 'warning');
+        return false;
+      }
+
       const totalTradesCount = snapshot.docs.length;
       const isSecondTrade = totalTradesCount === 1;
 
