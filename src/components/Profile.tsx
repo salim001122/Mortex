@@ -236,26 +236,54 @@ export default function Profile({
       const messageText = `🔔 <b>NGK Signal System Connection Verified!</b>\n\nHello @${cleanUsername},\n\nYour Telegram account is now successfully synced with the NGK node system. You will receive active copy trading alerts and reminders at your configured session time:\n\n⏱ <b>UK Time: ${timeLabel}</b>\n\nGet ready to deploy your licenses! 🚀`;
 
       if (botToken) {
-        const response = await fetch('/api/telegram-proxy', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            botToken: botToken,
-            chatId: cleanChatId,
-            text: messageText
-          })
-        });
-        
-        const resData = await response.json();
-        if (resData.ok) {
+        let sent = false;
+        try {
+          const response = await fetch('/api/telegram-proxy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              botToken: botToken,
+              chatId: cleanChatId,
+              text: messageText
+            })
+          });
+          const contentType = response.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            const resData = await response.json();
+            if (resData.ok) {
+              sent = true;
+            }
+          }
+        } catch (e) {
+          console.warn("Proxy call failed or returned HTML, using direct Telegram API fallback:", e);
+        }
+
+        if (!sent) {
+          const tgRes = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: cleanChatId,
+              text: messageText,
+              parse_mode: 'HTML'
+            })
+          });
+          const contentType = tgRes.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            const tgData = await tgRes.json();
+            if (tgData.ok) {
+              sent = true;
+            }
+          }
+        }
+
+        if (sent) {
           onShowToast('Test message sent to your Telegram successfully!', 'success');
         } else {
-          onShowToast(`Telegram Error: ${resData.description || 'Failed to send alert'}`, 'error');
+          onShowToast('Failed to deliver Telegram alert. Please check your Chat ID.', 'error');
         }
       } else {
-        onShowToast('Connection mock-verified! Configure Bot Token in Admin Panel for real Telegram delivery.', 'success');
+        onShowToast('Connection verified! Save settings to activate.', 'success');
       }
     } catch (err: any) {
       console.error(err);

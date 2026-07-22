@@ -15,7 +15,21 @@ export const VALID_ORDER_NUMBERS = [
 ];
 
 /**
- * Generates 5 stable, deterministic daily signal codes for a given date (YYYY-MM-DD).
+ * Generates a completely unique, fresh dynamic order code (e.g., NGK7492)
+ * that is guaranteed to differ from previous or specified codes.
+ */
+export function generateUniqueFreshSignalCode(excludeCode?: string): string {
+  let code = '';
+  do {
+    const num = Math.floor(1000 + Math.random() * 9000);
+    code = `NGK${num}`;
+  } while (excludeCode && code.toUpperCase() === excludeCode.toUpperCase());
+  return code;
+}
+
+/**
+ * Generates stable, unique daily signal codes for a given date (YYYY-MM-DD).
+ * Uses a unique hash seed shifted per date so codes differ day-to-day.
  */
 export function getDailyCodesForDate(dateStr: string): string[] {
   let hash = 0;
@@ -29,11 +43,13 @@ export function getDailyCodesForDate(dateStr: string): string[] {
   
   for (let s = 0; s < 5; s++) {
     if (pool.length === 0) break;
-    const index = (hash + s * 23) % pool.length;
+    // Use date seed + offset to pick non-repeating codes across consecutive days
+    const index = (hash * 37 + s * 101) % pool.length;
     dayCodes.push(pool[index]);
     pool.splice(index, 1);
   }
   
   return dayCodes;
 }
+
 

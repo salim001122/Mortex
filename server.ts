@@ -180,7 +180,8 @@ const SERVER_VALID_ORDER_NUMBERS = [
 async function triggerSignalCodeBroadcast(
   type: "signal_1" | "signal_2" | "signal_3" | "test",
   customPair?: string,
-  customDirection?: string
+  customDirection?: string,
+  customCode?: string
 ) {
   // 1. Fetch Telegram Config
   const snap = await getDoc(doc(db, "system", "telegram_config"));
@@ -194,8 +195,8 @@ async function triggerSignalCodeBroadcast(
     throw new Error("Missing botToken or channelId configuration.");
   }
 
-  // 2. Select details
-  const code = SERVER_VALID_ORDER_NUMBERS[Math.floor(Math.random() * SERVER_VALID_ORDER_NUMBERS.length)];
+  // 2. Select details & generate fresh unique code if not passed
+  const code = customCode || `NGK${Math.floor(1000 + Math.random() * 9000)}`;
   const startTime = new Date();
   const endTime = new Date(startTime.getTime() + 60 * 60 * 1000); // 1 hour valid window
   
@@ -450,13 +451,13 @@ async function startServer() {
   // API Route: Trigger a direct VIP Copy Trading Signal
   app.post("/api/telegram-broadcast-signal", async (req, res) => {
     try {
-      const { type, pair, direction } = req.body;
+      const { type, pair, direction, code } = req.body;
       if (!type || !["signal_1", "signal_2", "signal_3", "test"].includes(type)) {
         return res.status(400).json({ ok: false, error: "Invalid signal type requested." });
       }
 
-      console.log(`[Manual Signal API] Triggering signal broadcast type=${type}, pair=${pair}, direction=${direction}`);
-      const result = await triggerSignalCodeBroadcast(type, pair, direction);
+      console.log(`[Manual Signal API] Triggering signal broadcast type=${type}, pair=${pair}, direction=${direction}, code=${code}`);
+      const result = await triggerSignalCodeBroadcast(type, pair, direction, code);
       return res.json({ ok: true, message: "VIP Signal code broadcasted successfully!", ...result });
     } catch (err: any) {
       console.error("Manual Signal Broadcast Error:", err);
