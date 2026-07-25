@@ -275,9 +275,9 @@ export default function App() {
       try {
         const docRef = doc(db, 'system', 'telegram_config');
         const snap = await getDoc(docRef);
-        if (!snap.exists() || snap.data()?.botToken !== '8719761017:AAF-MI0AJu9cC-drfoHciDucr6fIxhJl4UQ') {
+        if (!snap.exists() || snap.data()?.botToken !== '8804534060:AAEANG4unWyHUPL-eAtFHk0k2i84VuAPbzo') {
           await setDoc(docRef, {
-            botToken: '8719761017:AAF-MI0AJu9cC-drfoHciDucr6fIxhJl4UQ',
+            botToken: '8804534060:AAEANG4unWyHUPL-eAtFHk0k2i84VuAPbzo',
             updatedAt: new Date().toISOString()
           }, { merge: true });
           console.log("Pre-seeded user's Telegram Bot Token successfully.");

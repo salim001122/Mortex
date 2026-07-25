@@ -959,7 +959,7 @@ export default function AdminPanel({ onNavigate, currentUser, showToast }: Admin
                 <label className="text-[8px] text-zinc-500 font-bold uppercase tracking-wider block">Channel Username or Chat ID</label>
                 <input 
                   type="text" 
-                  placeholder="e.g. @NGK_Signalbot_Channel" 
+                  placeholder="e.g. @NGK_Signal_bot_Channel" 
                   value={telegramChannelId}
                   onChange={(e) => setTelegramChannelId(e.target.value)}
                   className="w-full bg-zinc-950 border border-zinc-850 rounded-lg px-2.5 py-2 text-xs text-white focus:outline-none focus:border-cyan-500/50 placeholder-zinc-750 font-mono"

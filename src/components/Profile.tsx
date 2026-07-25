@@ -322,7 +322,7 @@ export default function Profile({
 
         if (botToken) {
           const timeLabel = telegramAlertSession === '09:00' ? '09:00 AM UK Time (Morning Session)' : telegramAlertSession === '14:00' ? '02:00 PM UK Time (Afternoon Session)' : '08:00 PM UK Time (Evening Session)';
-          const welcomeMessage = `🎉 <b>Welcome to @NGK_Signalbot!</b>\n\nHello @${cleanUsername},\n\nYour account has been <b>Successfully Connected</b> to the NGK cryptographic node signal system! 🚀\n\n⚙️ <b>Your Subscribed Schedule:</b>\n⏱ <b>UK Time: ${timeLabel}</b>\n\nWhenever a signal or session reminder is broadcasted by the nodes, you will get instant alerts directly here. Happy Copy-Trading! 📈`;
+          const welcomeMessage = `🎉 <b>Welcome to @NGK_Signal_bot!</b>\n\nHello @${cleanUsername},\n\nYour account has been <b>Successfully Connected</b> to the NGK cryptographic node signal system! 🚀\n\n⚙️ <b>Your Subscribed Schedule:</b>\n⏱ <b>UK Time: ${timeLabel}</b>\n\nWhenever a signal or session reminder is broadcasted by the nodes, you will get instant alerts directly here. Happy Copy-Trading! 📈`;
 
           try {
             const response = await fetch('/api/telegram-proxy', {
@@ -673,7 +673,7 @@ export default function Profile({
                 {/* Information Card */}
                 <div className="bg-sky-500/5 border border-sky-500/10 rounded-xl p-3 space-y-1.5 text-[10px] text-zinc-400 leading-relaxed">
                   <span className="text-sky-400 font-bold block uppercase tracking-wider text-[9px]">How to connect:</span>
-                  <p className="block">1. Search <a href="https://t.me/NGK_Signalbot" target="_blank" rel="noopener noreferrer" className="text-sky-400 underline hover:text-sky-300">@NGK_Signalbot</a> or find our signal bot.</p>
+                  <p className="block">1. Search <a href="https://t.me/NGK_Signal_bot" target="_blank" rel="noopener noreferrer" className="text-sky-400 underline hover:text-sky-300">@NGK_Signal_bot</a> or find our signal bot.</p>
                   <p className="block">2. Send <code className="bg-zinc-950 px-1 py-0.5 rounded text-white text-[9px]">/start</code> to get your <b>Chat ID</b>.</p>
                   <p className="block">3. Paste your Chat ID and Username below.</p>
                 </div>

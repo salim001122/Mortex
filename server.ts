@@ -18,121 +18,138 @@ const firebaseConfig = {
 const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp);
 
-// Highly polished, educational, and marketing-focused templates provided by user
+// Highly polished, educational, and marketing-focused templates provided by user across multiple languages
 const TELEGRAM_TEMPLATES = [
-  // Template 1: Welcome & Core Values
-  `✨ <b>Welcome to NGK Exchange Copy-Trading!</b>\n\n` +
-  `🚀 <b>LAUNCH DATE:</b> 15 July 2026\n` +
-  `📈 <b>Start Copying Live Signals Instantly!</b>\n\n` +
-  `🤖 Our professional cryptographic node-automated system is fully active. Follow these key metrics:\n` +
-  `✔️ <b>Minimum Deposit:</b> 100 USDT\n` +
-  `✔️ <b>Daily Profit:</b> 2% to 4%\n` +
-  `✔️ <b>Profit per Signal:</b> ~2.0%\n` +
-  `✔️ <b>Withdrawable:</b> Anytime after executing 8 copy-trades!\n\n` +
-  `📊 Participate in the digital asset revolution with professional risk-mitigated strategies.\n\n` +
-  `🔗 <b>Register Now:</b> https://ngkexchange.site/?ref=GTX-PJJM7`,
+  // Template 1: Multi-Lingual Global Welcome (English, Russian, Spanish, Arabic)
+  `🚀 <b>WELCOME TO NGK CRYPTOGRAPHIC COPY-TRADING PLATFORM</b> 🚀\n\n` +
+  `🇬🇧 <b>[ENGLISH]</b>\n` +
+  `Join the world's leading node-automated copy-trading system!\n` +
+  `• <b>Min Deposit:</b> 100 USDT\n` +
+  `• <b>Daily Profits:</b> 2% - 4% (2 Signals/Day)\n` +
+  `• <b>Withdrawals:</b> Unlocked after executing 8 copy-trades!\n` +
+  `• <b>Min Withdrawal:</b> 10 USDT\n\n` +
+  `🇷🇺 <b>[РУССКИЙ]</b>\n` +
+  `Присоединяйтесь к ведущей платформе автоматического копи-трейдинга!\n` +
+  `• <b>Мин. депозит:</b> 100 USDT | <b>Доход:</b> 2% - 4% в день\n` +
+  `• <b>Вывод средств:</b> Доступен после 8 копи-сделок!\n\n` +
+  `🇪🇸 <b>[ESPAÑOL]</b>\n` +
+  `¡Únete a la plataforma líder de copy-trading con nodos automatizados!\n` +
+  `• <b>Depósito Mínimo:</b> 100 USDT | <b>Ganancia Diaria:</b> 2% - 4%\n` +
+  `• <b>Retiros:</b> ¡Desbloqueados tras 8 operaciones!\n\n` +
+  `🇦🇪 <b>[العربية]</b>\n` +
+  `انضم إلى منصة تداول النسخ الأولى المدعومة بالعقد الرقمية!\n` +
+  `• <b>الحد الأدنى للإيداع:</b> 100 USDT | <b>الربح اليومي:</b> 2% - 4%\n` +
+  `• <b>السحب:</b> متاح بعد تنفيذ 8 صفقات نسخ!\n\n` +
+  `🔗 <b>Register Now / Зарегистрироваться:</b> https://ngkexchange.site/?ref=GTX-PJJM7`,
 
-  // Template 2: Daily Schedule
-  `🕒 <b>NGK Exchange - Daily Signal Schedule</b>\n\n` +
-  `Dear Traders, please note our official daily session times to maximize your 4% daily potential:\n\n` +
-  `➡️ <b>First Trading Signal:</b>\n` +
-  `⏱ 11:00 AM (UK Time) ➡️ Expected Profit: +2%\n\n` +
-  `➡️ <b>Second Trading Signal:</b>\n` +
-  `⏱ 13:00 PM (1:00 PM UK Time) ➡️ Expected Profit: +2%\n\n` +
-  `💡 <i>Important: Please log in on time to copy trade. No compensation can be provided for missed signals due to personal delays. Let's trade smart!</i>\n\n` +
-  `🔗 <b>Secure Dashboard:</b> https://ngkexchange.site/?ref=GTX-PJJM7`,
-
-  // Template 3: Setup Guide
-  `🪪 <b>How to Begin Copy-Trading on NGK Exchange</b>\n\n` +
-  `Are you new to the platform? Here is the exact path to setup:\n\n` +
-  `1️⃣ <b>Register Account:</b> Register via our official representative link.\n` +
-  `2️⃣ <b>Complete Verification:</b> Complete KYC (Identity Verification) for instant secure withdrawals.\n` +
-  `3️⃣ <b>Fund Wallet:</b> Deposit min 100 USDT (TRC20, BEP20, or ERC20 supported).\n` +
-  `4️⃣ <b>Connect Bot & Alerts:</b> Paste your Telegram Chat ID in Profile Settings.\n` +
-  `5️⃣ <b>Execute Signals:</b> Simply click 'Copy Signal' when broadcasted at 11:00 & 13:00 UK Time.\n\n` +
-  `💰 <b>Deposit & Profit are fully withdrawable after 8 copy trades!</b>\n\n` +
-  `🔗 <b>Get Started:</b> https://ngkexchange.site/?ref=GTX-PJJM7`,
-
-  // Template 4: Affiliate & Commission Rewards
-  `🌟 <b>NGK Exchange Referral & Affiliate Program</b>\n\n` +
-  `Invite your network and earn double-sided bonuses directly paid to your USDT wallet!\n\n` +
-  `💰 <b>Deposit 100 USDT:</b>\n` +
-  `🤝 Referrer receives <b>5 USDT</b> ｜ User receives <b>3 USDT</b>\n\n` +
-  `💰 <b>Deposit 500 USDT:</b>\n` +
-  `🤝 Referrer receives <b>30 USDT</b> ｜ User receives <b>20 USDT</b>\n\n` +
-  `💰 <b>Deposit 1000 USDT:</b>\n` +
-  `🤝 Referrer receives <b>70 USDT</b> ｜ User receives <b>50 USDT</b>\n\n` +
-  `👥 <b>Multi-level Commissions:</b>\n` +
-  `Level 1 ➡️ <b>5%</b> of trading profits\n` +
-  `Level 2 ➡️ <b>3%</b> of trading profits\n\n` +
-  `🔗 <b>Your Invite Link:</b> https://ngkexchange.site/?ref=GTX-PJJM7`,
-
-  // Template 5: Safety & Regulatory Compliance
-  `🛡️ <b>NGK Exchange Security & Support</b>\n\n` +
-  `Why is NGK Exchange trusted by thousands of active copy-traders globally?\n\n` +
-  `🔒 <b>Cold-Storage Audited Wallets:</b> All user funds are secured via multisig cold wallets.\n` +
-  `🪪 <b>KYC Verification:</b> Fully regulated digital asset tracking to protect investor integrity.\n` +
-  `⚡ <b>Instant Withdrawals:</b> Minimum withdrawal of only 10 USDT, processed swiftly.\n` +
-  `🕒 <b>24/7 Dedicated Support:</b> Helpdesk is active around the clock for any technical assistance.\n\n` +
-  `Maximize your portfolio with a platform that values transparency.\n\n` +
+  // Template 2: Multi-Account Warning & Fraud Prevention (En, Ru, Es, Ar)
+  `⚠️ <b>STRICT SECURITY WARNING: MULTI-ACCOUNT & FAKE REFERRAL POLICY</b> ⚠️\n\n` +
+  `🇬🇧 <b>[ENGLISH]</b>\n` +
+  `To maintain regulatory compliance and security, NGK strictly enforces a <b>ONE ACCOUNT PER USER / IP / DEVICE</b> policy. Creating multiple fake accounts to abuse deposit bonuses will result in immediate <b>PERMANENT ACCOUNT BAN & IP BLACKLIST</b> with complete loss of funds!\n\n` +
+  `🇷🇺 <b>[РУССКИЙ]</b>\n` +
+  `Внимание! Действует правило <b>ОДИН АККАУНТ НА ПОЛЬЗОВАТЕЛЯ / IP / УСТРОЙСТВО</b>. Создание мульти-аккаунтов влечет <b>ВЕЧНУЮ БЛОКИРОВКУ</b> и аннулирование депозитов!\n\n` +
+  `🇪🇸 <b>[ESPAÑOL]</b>\n` +
+  `¡Atención! Regla estricta de <b>UNA SOLA CUENTA POR USUARIO / IP / DISPOSITIVO</b>. La creación de múltiples cuentas resultará en <b>BLOQUEO PERMANENTE</b> sin reembolso.\n\n` +
+  `🇦🇪 <b>[العربية]</b>\n` +
+  `تحذير أمني صارم! تطبق المنصة سياسة <b>حساب واحد فقط لكل مستخدم / IP / جهاز</b>. إنشاء حسابات متعددة للاستغلال يؤدي إلى <b>الحظر النهائي المباشر</b> وتجميد الأموال!\n\n` +
+  `🛡️ <i>Play fair, protect your capital, and build real legitimate teams.</i>\n\n` +
   `🔗 <b>Official Portal:</b> https://ngkexchange.site/?ref=GTX-PJJM7`,
 
-  // Template 6: Russian Language Overview (Русская Версия)
-  `🇷🇺 <b>Добро пожаловать в NGK Exchange!</b>\n\n` +
-  `📅 <b>Дата запуска:</b> 15 июля 2026\n` +
-  `🔗 <b>Регистрация:</b> https://ngkexchange.site/?ref=GTX-PJJM7\n\n` +
-  `✔️ <b>Минимальный депозит:</b> 100 USDT\n` +
-  `⚡️ <b>Прибыль с каждого сигнала:</b> около 2%\n` +
-  `📊 <b>Ежедневный доход:</b> до 4%\n` +
-  `📌 <b>Депозит и прибыль можно вывести в любое время после выполнения 8 копи-сделок!</b>\n` +
-  `✔️ <b>Минимальный вывод:</b> 10 USDT\n` +
-  `🪪 <b>Требуется верификация KYC</b>\n\n` +
-  `👥 <b>Реферальная комиссия:</b>\n` +
-  `Уровень 1 — 5%\n` +
-  `Уровень 2 — 3%\n\n` +
-  `🕒 <b>Поддержка:</b> 24/7\n` +
-  `➡️ <b>Два сигнала в день:</b> 11:00 и 13:00 по времени Великобритании (UK).\n\n` +
-  `🔗 <b>Присоединяйтесь прямо сейчас:</b> https://ngkexchange.site/?ref=GTX-PJJM7`,
+  // Template 3: Mandatory KYC Verification Notice (En, Ru, Es, Ar)
+  `🔐 <b>MANDATORY KYC IDENTITY VERIFICATION FOR WITHDRAWALS</b> 🔐\n\n` +
+  `🇬🇧 <b>[ENGLISH]</b>\n` +
+  `All active traders must complete mandatory Identity Verification (KYC) before initiating capital withdrawals:\n` +
+  `1️⃣ Navigate to <b>Profile ➡️ Identity Verification (KYC)</b>\n` +
+  `2️⃣ Upload your Passport, National ID, or Driving License\n` +
+  `3️⃣ Instant AI approval within minutes!\n` +
+  `<i>KYC verification ensures institutional anti-money laundering compliance and wallet protection.</i>\n\n` +
+  `🇷🇺 <b>[РУССКИЙ]</b>\n` +
+  `Верификация личности (KYC) обязательна перед выводом средств! Загрузите документ в разделе Профиль для быстрого подтверждения.\n\n` +
+  `🇪🇸 <b>[ESPAÑOL]</b>\n` +
+  `La verificación de identidad (KYC) es obligatoria antes del retiro de fondos. Suba su documento en la sección Perfil.\n\n` +
+  `🇦🇪 <b>[العربية]</b>\n` +
+  `التحقق من الهوية (KYC) إلزامي لجميع المستخدمين قبل طلب السحب! يرجى رفع الهوية الوطنية أو جواز السفر من قسم الملف الشخصي.\n\n` +
+  `🔗 <b>Verify Identity Now:</b> https://ngkexchange.site/?ref=GTX-PJJM7`,
 
-  // Template 7: Compound Earnings power
-  `📈 <b>The Power of Compound Earnings on NGK</b>\n\n` +
-  `With daily compounding returns of up to 4% (2 signals of 2% each), your portfolio has exponential potential!\n\n` +
-  `💡 <b>Scenario:</b>\n` +
-  `Starting with 1,000 USDT ➡️ average daily gains of ~4%. Your deposit and accumulated profits can be withdrawn anytime after 8 successful copy trades. \n\n` +
-  `🔒 All calculations are executed automatically by the advanced NGK cryptographic nodes, guaranteeing top-tier risk management and entry pricing.\n\n` +
-  `🔗 <b>Activate License:</b> https://ngkexchange.site/?ref=GTX-PJJM7`,
+  // Template 4: Offline Promotion & Global VIP Dinner Events (En, Ru, Es, Ar)
+  `🍷🍽️ <b>NGK GLOBAL OFFLINE EVENTS & VIP DINNER PARTIES</b> 🥂🎉\n\n` +
+  `🇬🇧 <b>[ENGLISH]</b>\n` +
+  `NGK Exchange is expanding offline! We support regional office centers, offline educational seminars, and luxury <b>VIP Gala Dinner Events</b> for top regional team leaders!\n` +
+  `• <b>Office Sponsorship Grant:</b> Up to $3,000 USDT/month for regional centers.\n` +
+  `• <b>VIP Gala Dinner Invites:</b> All-inclusive tickets & five-star accommodations for elite partners.\n\n` +
+  `🇷🇺 <b>[РУССКИЙ]</b>\n` +
+  `NGK проводит официальные офлайн-семинары и VIP-ужины для лидеров команд! Финансирование офисов до $3000 USDT в месяц и приглашения на гала-вечера.\n\n` +
+  `🇪🇸 <b>[ESPAÑOL]</b>\n` +
+  `¡NGK organiza seminarios presenciales y Cenas VIP de Gala para los líderes regionales más destacados con patrocinio de oficinas de hasta $3,000 USDT!\n\n` +
+  `🇦🇪 <b>[العربية]</b>\n` +
+  `تستضيف NGK مؤتمرات أوفلاين وحفلات عشاء VIP فاخرة لقادة المناطق! تمويل مكاتب إقليمية يصل إلى 3000 USDT شهرياً.\n\n` +
+  `🤝 <i>Contact Support to apply for Regional Leader Sponsorship & Dinner Invitations.</i>\n\n` +
+  `🔗 <b>Join NGK Global:</b> https://ngkexchange.site/?ref=GTX-PJJM7`,
 
-  // Template 8: Russian Referral & Rewards (Реферальные Бонусы)
-  `🌟 <b>Реферальные бонусы NGK Exchange</b>\n\n` +
-  `Приглашайте друзей и получайте взаимные бонусы:\n\n` +
-  `💰 <b>Депозит 100 USDT:</b>\n` +
-  `Пригласитель — <b>5 USDT</b> ｜ Пользователь — <b>3 USDT</b>\n\n` +
-  `💰 <b>Депозит 500 USDT:</b>\n` +
-  `Пригласитель — <b>30 USDT</b> ｜ Пользователь — <b>20 USDT</b>\n\n` +
-  `💰 <b>Депозит 1000 USDT:</b>\n` +
-  `Пригласитель — <b>70 USDT</b> ｜ Пользователь — <b>50 USDT</b>\n\n` +
-  `🔗 Начните строить свою пассивную сеть сегодня!\n\n` +
-  `🔗 <b>Ссылка для регистрации:</b> https://ngkexchange.site/?ref=GTX-PJJM7`,
+  // Template 5: Daily Schedule & Trading Hours (En, Ru, Es, Ar)
+  `🕒 <b>DAILY COPY-TRADING SIGNAL SCHEDULE (UK TIME)</b> 🕒\n\n` +
+  `🇬🇧 <b>[ENGLISH]</b>\n` +
+  `Maximize your daily 4% compounding returns during official node broadcast hours:\n` +
+  `⏱️ <b>Signal #1 (Morning):</b> 11:00 AM (UK Time) ➡️ +2.0% Gain\n` +
+  `⏱️ <b>Signal #2 (Afternoon):</b> 01:00 PM (UK Time) ➡️ +2.0% Gain\n` +
+  `<i>Important: Order codes remain valid for 1 Hour. Execute trades promptly!</i>\n\n` +
+  `🇷🇺 <b>[РУССКИЙ]</b> Время сигналов (время Великобритании UK):\n` +
+  `⏱️ <b>Сигнал 1:</b> 11:00 UK ➡️ +2.0% | ⏱️ <b>Сигнал 2:</b> 13:00 UK ➡️ +2.0%\n\n` +
+  `🇪🇸 <b>[ESPAÑOL]</b> Horarios de señales (Hora del Reino Unido UK):\n` +
+  `⏱️ <b>Señal 1:</b> 11:00 AM UK ➡️ +2.0% | ⏱️ <b>Señal 2:</b> 01:00 PM UK ➡️ +2.0%\n\n` +
+  `🇦🇪 <b>[العربية]</b> جدول الإشارات اليومي (بتوقيت المملكة المتحدة UK):\n` +
+  `⏱️ <b>الإشارة الأولى:</b> 11:00 صباحاً ➡️ +2.0% | ⏱️ <b>الإشارة الثانية:</b> 01:00 ظهراً ➡️ +2.0%\n\n` +
+  `🔗 <b>Execute Signals Live:</b> https://ngkexchange.site/?ref=GTX-PJJM7`,
 
-  // Template 9: Copy Trading Best Practices
-  `📊 <b>NGK Copy-Trading Operational Rules</b>\n\n` +
-  `To ensure 100% success rate on copy trades, follow these strict directives:\n\n` +
-  `1️⃣ Ensure your balance has at least 100 USDT.\n` +
-  `2️⃣ Open the Copy Trading dashboard 5 minutes before signal broadcast.\n` +
-  `3️⃣ When the Signal goes live, click "Copy Trade" immediately to lock in the optimal execution price.\n` +
-  `4️⃣ Do not manually close or interrupt the transaction; our node automated system settles the trade in precisely 30 minutes.\n\n` +
-  `Strict adherence to rules guarantees maximum profit! 🚀\n\n` +
-  `🔗 <b>Log In:</b> https://ngkexchange.site/?ref=GTX-PJJM7`,
+  // Template 6: Referral Program & Tiered Rewards (En, Ru, Es, Ar)
+  `🌟 <b>NGK AFFILIATE & REWARD PROGRAM</b> 🌟\n\n` +
+  `🇬🇧 <b>[ENGLISH]</b> Earn double-sided direct USDT rewards & team commission shares!\n` +
+  `• <b>Deposit 100 USDT:</b> Inviter <b>5 USDT</b> ｜ Member <b>3 USDT</b>\n` +
+  `• <b>Deposit 500 USDT:</b> Inviter <b>30 USDT</b> ｜ Member <b>20 USDT</b>\n` +
+  `• <b>Deposit 1000 USDT:</b> Inviter <b>70 USDT</b> ｜ Member <b>50 USDT</b>\n` +
+  `• <b>Profit Commissions:</b> Level 1 ➡️ <b>5%</b> ｜ Level 2 ➡️ <b>3%</b>\n\n` +
+  `🇷🇺 <b>[РУССКИЙ]</b> Бонусы за депозиты рефералов и до 5% от прибыли команды!\n\n` +
+  `🇪🇸 <b>[ESPAÑOL]</b> ¡Bonos de depósito directo e ingresos pasivos de red!\n\n` +
+  `🇦🇪 <b>[العربية]</b> مكافآت الإيداع المباشر وأرباح الفريق متعددة المستويات!\n\n` +
+  `🔗 <b>Get Your Invite Link:</b> https://ngkexchange.site/?ref=GTX-PJJM7`,
 
-  // Template 10: 24/7 Client support details
-  `💬 <b>NGK Exchange Professional Support 24/7</b>\n\n` +
-  `Need help with registration, deposits, KYC, or copy trading?\n\n` +
-  `Our specialized client relations team is available 24/7 to resolve any issues. We support high-speed networks:\n` +
-  `• <b>TRC20</b> (TRON network)\n` +
-  `• <b>BEP20</b> (BSC network)\n` +
-  `• <b>ERC20</b> (Ethereum network)\n\n` +
-  `Enjoy seamless digital asset wealth management.\n\n` +
-  `🔗 <b>Register:</b> https://ngkexchange.site/?ref=GTX-PJJM7`
+  // Template 7: Russian Guide (Инструкция на русском)
+  `🇷🇺 <b>ПОШАГОВАЯ ИНСТРУКЦИЯ ДЛЯ НОВИЧКОВ (NGK EXCHANGE)</b>\n\n` +
+  `1️⃣ Зарегистрируйтесь по официальной ссылке.\n` +
+  `2️⃣ Пополните баланс от 100 USDT (TRC20, BEP20 или ERC20).\n` +
+  `3️⃣ Пройдите верификацию KYC для быстрой активации вывода средств.\n` +
+  `4️⃣ Подключите ваш Telegram Chat ID в настройках профиля.\n` +
+  `5️⃣ В 11:00 и 13:00 (по времени Лондона) нажимайте «Копировать сигнал»!\n\n` +
+  `📌 <b>Депозит и прибыль доступны к выводу после выполнения 8 копи-сделок!</b>\n\n` +
+  `🔗 <b>Начать работу:</b> https://ngkexchange.site/?ref=GTX-PJJM7`,
+
+  // Template 8: Spanish Guide (Guía completa en español)
+  `🇪🇸 <b>GUÍA COMPLETA DE PASO A PASO EN ESPAÑOL (NGK EXCHANGE)</b> 🇪🇸\n\n` +
+  `1️⃣ Regístrese utilizando el enlace oficial de la plataforma.\n` +
+  `2️⃣ Realice un depósito mínimo de 100 USDT (TRC20 / BEP20).\n` +
+  `3️⃣ Complete la verificación de identidad (KYC) para habilitar retiros.\n` +
+  `4️⃣ Conecte su ID de Telegram en la configuración del perfil.\n` +
+  `5️⃣ Copie las señales a las 11:00 AM y 01:00 PM (Hora Reino Unido).\n\n` +
+  `💰 <b>¡Retiro total de depósito y ganancias habilitado tras 8 operaciones!</b>\n\n` +
+  `🔗 <b>Registrarse Ahora:</b> https://ngkexchange.site/?ref=GTX-PJJM7`,
+
+  // Template 9: Arabic Guide (الدليل الشامل باللغة العربية)
+  `🇦🇪 <b>الدليل الشامل للبدء في منصة NGK EXCHANGE</b> 🇦🇪\n\n` +
+  `1️⃣ قم بالتسجيل عبر الرابط الرسمي للمنصة.\n` +
+  `2️⃣ إيداع الحد الأدنى 100 USDT (عبر شبكات TRC20, BEP20, ERC20).\n` +
+  `3️⃣ إكمال التحقق من الهوية (KYC) لضمان تفعيل السحب الفوري.\n` +
+  `4️⃣ ربط معرّف Telegram Chat ID الخاص بك في إعدادات الحساب.\n` +
+  `5️⃣ تنفيذ الإشارات اليومية الساعة 11:00 صباحاً و 01:00 ظهراً بتوقيت لندن.\n\n` +
+  `💰 <b>يمكن سحب رأس المال والأرباح بالكامل بعد تنفيذ 8 صفقات نسخ فقط!</b>\n\n` +
+  `🔗 <b>سجل الآن:</b> https://ngkexchange.site/?ref=GTX-PJJM7`,
+
+  // Template 10: 24/7 Support & Cold Wallet Security (En, Ru, Es, Ar)
+  `💬 <b>NGK INSTITUTIONAL SECURITY & 24/7 SUPPORT</b> 💬\n\n` +
+  `🇬🇧 <b>[ENGLISH]</b> Your assets are protected by multisig cold vaults, AI automated node matching, and 24/7 client support desk.\n\n` +
+  `🇷🇺 <b>[РУССКИЙ]</b> Круглосуточная поддержка клиентов 24/7 и надежная защита балансов.\n\n` +
+  `🇪🇸 <b>[ESPAÑOL]</b> Soporte al cliente en vivo 24/7 y la máxima seguridad para sus fondos.\n\n` +
+  `🇦🇪 <b>[العربية]</b> الدعم الفني والحماية الرقمية المتكاملة لأموالك على مدار 24 ساعة.\n\n` +
+  `🔗 <b>Official Portal:</b> https://ngkexchange.site/?ref=GTX-PJJM7`
 ];
 
 function cleanChannelId(channelId: string): string {
@@ -166,7 +183,11 @@ async function sendTelegramBroadcast(botToken: string, channelId: string, templa
 
   const data = await response.json();
   if (!response.ok || !data.ok) {
-    throw new Error(data.description || "Telegram API rejected the broadcast message.");
+    let errDesc = data.description || "Telegram API rejected the broadcast message.";
+    if (errDesc.includes("PEER_ID_INVALID") || errDesc.includes("chat not found")) {
+      errDesc = "Invalid Telegram Channel ID or Bot is not an Admin. Please ensure your Telegram Bot is added as an Administrator in your Telegram Channel.";
+    }
+    throw new Error(errDesc);
   }
   return { ok: true, data, index };
 }
@@ -275,7 +296,11 @@ async function triggerSignalCodeBroadcast(
 
   const data = await response.json();
   if (!response.ok || !data.ok) {
-    throw new Error(data.description || "Failed to post message to Telegram channel.");
+    let errDesc = data.description || "Failed to post message to Telegram channel.";
+    if (errDesc.includes("PEER_ID_INVALID") || errDesc.includes("chat not found")) {
+      errDesc = "Invalid Telegram Channel ID or Bot is not an Admin. Please ensure your Telegram Bot is added as an Administrator in your Telegram Channel.";
+    }
+    throw new Error(errDesc);
   }
 
   return {
@@ -375,7 +400,7 @@ async function startServer() {
       }
 
       const cleanedChatId = cleanChannelId(channelId);
-      const testMsg = `🔔 <b>NGK Exchange Bot Integration Verified!</b>\n\nYour representative bot @NGK_Signalbot has been successfully connected as an Admin to this channel! 🚀\n\nAutomated daily postings are now armed and ready. Let's make passive income seamless! 📈`;
+      const testMsg = `🔔 <b>NGK Exchange Bot Integration Verified!</b>\n\nYour representative bot @NGK_Signal_bot has been successfully connected as an Admin to this channel! 🚀\n\nAutomated daily postings are now armed and ready. Let's make passive income seamless! 📈`;
 
       const telegramUrl = `https://api.telegram.org/bot${botToken}/sendMessage`;
       const response = await fetch(telegramUrl, {
