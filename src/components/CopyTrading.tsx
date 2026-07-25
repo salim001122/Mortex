@@ -1203,10 +1203,26 @@ export default function CopyTrading({
 
                   {/* Settle Now bypass & active timer block */}
                   {isPending && (
-                    <div className="mt-4 pt-3 border-t border-zinc-850/60 flex items-center justify-between gap-3">
-                      <div className="flex-1">
+                    <div className="mt-4 pt-3 border-t border-zinc-850/60 flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex-1 min-w-[180px]">
                         <ActiveTradeTimer endTime={trade.endTime} />
                       </div>
+                      {(!trade.endTime || new Date(trade.endTime).getTime() <= Date.now()) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (onInstantSettleTrade) {
+                              onInstantSettleTrade(trade.id);
+                            } else {
+                              handleSettleNow(trade);
+                            }
+                          }}
+                          className="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-zinc-950 font-black text-[10px] uppercase font-mono px-3.5 py-2.5 rounded-xl shadow-lg cursor-pointer transition flex items-center gap-1.5 animate-pulse"
+                        >
+                          <Sparkles size={13} />
+                          Claim +${(trade.amount * 0.02).toFixed(2)} USDT Profit
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>

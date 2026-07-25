@@ -1,19 +1,20 @@
-import { Home, LineChart, Copy, Coins, Users, User } from 'lucide-react';
+import { Home, LineChart, Copy, Users, User } from 'lucide-react';
 import { motion } from 'motion/react';
+import { Language, getTranslation } from '../translations';
 
 interface NavbarProps {
   currentScreen: string;
   onNavigate: (screen: string) => void;
   unreadCount?: number;
+  lang?: Language;
 }
 
-export default function Navbar({ currentScreen, onNavigate }: NavbarProps) {
+export default function Navbar({ currentScreen, onNavigate, lang = 'en' }: NavbarProps) {
   const navItems = [
-    { id: 'dashboard', label: 'Home', icon: Home },
-    { id: 'market', label: 'Market', icon: LineChart },
-    { id: 'copyTrade', label: 'Copy', icon: Copy },
-    { id: 'refer', label: 'Refer', icon: Users },
-    { id: 'more', label: 'Profile', icon: User }
+    { id: 'dashboard', labelKey: 'navHome', fallback: 'Home', icon: Home },
+    { id: 'copyTrade', labelKey: 'navCopyTrade', fallback: 'Copy', icon: Copy },
+    { id: 'refer', labelKey: 'navReferral', fallback: 'Refer', icon: Users },
+    { id: 'more', labelKey: 'navProfile', fallback: 'Profile', icon: User }
   ];
 
   return (
@@ -23,6 +24,8 @@ export default function Navbar({ currentScreen, onNavigate }: NavbarProps) {
           const Icon = item.icon;
           const isActive = currentScreen === item.id || 
             (item.id === 'more' && ['more', 'history', 'leaderboard'].includes(currentScreen));
+
+          const label = getTranslation(lang, item.labelKey) || item.fallback;
 
           return (
             <button
@@ -55,7 +58,7 @@ export default function Navbar({ currentScreen, onNavigate }: NavbarProps) {
                   isActive ? 'text-cyan-400' : 'text-zinc-500 group-hover:text-zinc-400'
                 }`}
               >
-                {item.label}
+                {label}
               </span>
             </button>
           );
@@ -64,3 +67,4 @@ export default function Navbar({ currentScreen, onNavigate }: NavbarProps) {
     </nav>
   );
 }
+

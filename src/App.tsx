@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { 
   ArrowLeft, 
@@ -52,6 +52,7 @@ import Support from './components/Support';
 import AdminPanel from './components/AdminPanel';
 import AgentSupportPanel from './components/AgentSupportPanel';
 import { VALID_ORDER_NUMBERS } from './lib/orderCodes';
+import { Language, getTranslation } from './translations';
 
 // Firebase imports
 import { auth, db } from './firebase';
@@ -95,9 +96,17 @@ const SEED_CHAT_MESSAGES: ChatMessage[] = [
 ];
 
 export default function App() {
-  // Screens & Navigation
+  // Screens & Navigation & Global Language State
   const [currentScreen, setCurrentScreen] = useState<string>('dashboard');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'warning' | 'info' } | null>(null);
+  const [lang, setLang] = useState<Language>(() => {
+    return (localStorage.getItem('ngk_app_lang') as Language) || 'en';
+  });
+
+  const handleLanguageChange = (newLang: Language) => {
+    setLang(newLang);
+    localStorage.setItem('ngk_app_lang', newLang);
+  };
   
   // NEW: NGK Animated Splash Screen State & Timer
   const [showSplash, setShowSplash] = useState<boolean>(true);
@@ -426,76 +435,97 @@ export default function App() {
     return () => unsubSignal();
   }, []);
 
-  // 3. Real-time intervals check for Copy Trades expiration and Staking Yield accumulation
+  // Set to track copy trades currently undergoing settlement to avoid duplicate processing
+  const processingCopyTradeIdsRef = useRef<Set<string>>(new Set());
+
+  // Helper to settle a copy trade reliably
+  const settleCopyTrade = async (tx: Transaction) => {
+    if (!currentUser || processingCopyTradeIdsRef.current.has(tx.id)) return;
+    processingCopyTradeIdsRef.current.add(tx.id);
+
+    try {
+      const txRef = doc(db, 'users', currentUser.uid, 'transactions', tx.id);
+      const txSnap = await getDoc(txRef);
+      if (!txSnap.exists()) return;
+
+      const latestTx = { id: txSnap.id, ...txSnap.data() } as Transaction;
+      if (latestTx.status !== TransactionStatus.Pending) return;
+
+      const profit = latestTx.amount * 0.02; // exactly 2% profit rate
+      const totalReturn = latestTx.amount + profit;
+      const isSecondTrade = latestTx.requiresApproval;
+
+      if (isSecondTrade) {
+        // VIP 2nd daily trade -> Hold for escrow
+        await updateDoc(txRef, {
+          status: TransactionStatus.Hold,
+          profit,
+          totalReturn
+        });
+        try {
+          await updateDoc(doc(db, 'copy_trades', tx.id), {
+            status: TransactionStatus.Hold,
+            profit,
+            totalReturn
+          });
+        } catch (err) {
+          console.warn("Global copy_trades status update failed:", err);
+        }
+        showToast(`VIP Daily Limit Trade finished! Placed on Security HOLD for Audit.`, 'warning');
+      } else {
+        // Standard 1st trade -> Settle & credit mainBalance + profitBalance immediately
+        await updateDoc(txRef, {
+          status: TransactionStatus.Success,
+          profit,
+          totalReturn
+        });
+        try {
+          await updateDoc(doc(db, 'copy_trades', tx.id), {
+            status: TransactionStatus.Success,
+            profit,
+            totalReturn
+          });
+        } catch (err) {
+          console.warn("Global copy_trades status update failed:", err);
+        }
+
+        await updateDoc(doc(db, 'users', currentUser.uid), {
+          mainBalance: increment(totalReturn),
+          profitBalance: increment(profit)
+        });
+
+        showToast(`🎉 Copy trade complete! +$${profit.toFixed(2)} USDT profits added to balance.`, 'success');
+        
+        // Distribute Level 1 and Level 2 profit commissions
+        await distributeProfitCommissions(currentUser.uid, profit);
+      }
+    } catch (err) {
+      console.error("Error settling copy trade:", err);
+    } finally {
+      processingCopyTradeIdsRef.current.delete(tx.id);
+    }
+  };
+
+  // 3. Real-time automatic auto-settlement engine for Copy Trades and Staking Yields
   useEffect(() => {
     if (!currentUser) return;
 
-    const timer = setInterval(async () => {
-      const nowStr = new Date().toISOString();
+    const runAutoSettlements = async () => {
+      const nowMs = Date.now();
 
-      try {
-        // Query pending copy trades
-        const txsRef = collection(db, 'users', currentUser.uid, 'transactions');
-        const qPending = query(
-          txsRef,
-          where('type', '==', TransactionType.CopyTrade),
-          where('status', '==', TransactionStatus.Pending)
-        );
-        const pendingSnap = await getDocs(qPending);
+      // A) Check pending copy trades directly from in-memory real-time transactions array
+      const pendingCopyTrades = transactions.filter(
+        t => t.type === TransactionType.CopyTrade && t.status === TransactionStatus.Pending
+      );
 
-        for (const txDoc of pendingSnap.docs) {
-          const tx = { id: txDoc.id, ...txDoc.data() } as Transaction;
-          if (tx.endTime && tx.endTime <= nowStr) {
-            const profit = tx.amount * 0.02; // exactly 2% profit rate
-            const totalReturn = tx.amount + profit;
-
-            if (tx.requiresApproval) {
-              // 2nd daily trade gets placed on hold
-              await updateDoc(doc(db, 'users', currentUser.uid, 'transactions', tx.id), {
-                status: TransactionStatus.Hold,
-                profit,
-                totalReturn
-              });
-              try {
-                await updateDoc(doc(db, 'copy_trades', tx.id), {
-                  status: TransactionStatus.Hold,
-                  profit,
-                  totalReturn
-                });
-              } catch (err) {
-                console.warn("Global copy_trades doc update failed:", err);
-              }
-              showToast(`VIP Daily Limit Trade finished! Placed on Security HOLD for Audit.`, 'warning');
-            } else {
-              await updateDoc(doc(db, 'users', currentUser.uid, 'transactions', tx.id), {
-                status: TransactionStatus.Success,
-                profit,
-                totalReturn
-              });
-              try {
-                await updateDoc(doc(db, 'copy_trades', tx.id), {
-                  status: TransactionStatus.Success,
-                  profit,
-                  totalReturn
-                });
-              } catch (err) {
-                console.warn("Global copy_trades doc update failed:", err);
-              }
-
-              await updateDoc(doc(db, 'users', currentUser.uid), {
-                mainBalance: increment(totalReturn),
-                profitBalance: increment(profit)
-              });
-
-              showToast(`Copy trade with ${tx.traderName} complete! +$${profit.toFixed(2)} USDT profits added.`, 'success');
-              
-              // Distribute Level 1 and Level 2 profit commissions
-              await distributeProfitCommissions(currentUser.uid, profit);
-            }
-          }
+      for (const tx of pendingCopyTrades) {
+        if (!tx.endTime || new Date(tx.endTime).getTime() <= nowMs) {
+          await settleCopyTrade(tx);
         }
+      }
 
-        // Check Staking yields
+      // B) Check Staking yields
+      try {
         const stakesRef = collection(db, 'users', currentUser.uid, 'stakes');
         const qStakes = query(stakesRef, where('status', '==', 'Active'));
         const stakesSnap = await getDocs(qStakes);
@@ -504,7 +534,6 @@ export default function App() {
           const st = { id: stakeDoc.id, ...stakeDoc.data() } as Stake;
           const startMs = new Date(st.startDate).getTime();
           const endMs = new Date(st.endDate).getTime();
-          const nowMs = Date.now();
 
           if (nowMs >= endMs) {
             // Stake complete
@@ -558,11 +587,25 @@ export default function App() {
       } catch (err) {
         console.error('Simulation check error:', err);
       }
+    };
 
-    }, 3000); // Checked every 3 seconds for fast feedback
+    // Run immediately when transactions or user changes
+    runAutoSettlements();
 
-    return () => clearInterval(timer);
-  }, [currentUser]);
+    // Polling timer every 2 seconds
+    const timer = setInterval(runAutoSettlements, 2000);
+
+    // Run check whenever user switches back to app tab
+    const handleWindowFocus = () => {
+      runAutoSettlements();
+    };
+    window.addEventListener('focus', handleWindowFocus);
+
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', handleWindowFocus);
+    };
+  }, [currentUser, transactions]);
 
   // Simulated chats interval to generate lively discussions inside the Community Chat window
   useEffect(() => {
@@ -1153,63 +1196,19 @@ export default function App() {
   // Instant settle
   const handleInstantSettleTrade = async (txId: string) => {
     if (!currentUser) return;
-
-    try {
-      const txRef = doc(db, 'users', currentUser.uid, 'transactions', txId);
-      const txSnap = await getDoc(txRef);
-      if (!txSnap.exists()) return;
-
-      const tx = txSnap.data() as Transaction;
-      if (tx.status !== TransactionStatus.Pending) return;
-
-      const profit = tx.amount * 0.02; // exactly 2% profit rate
-      const totalReturn = tx.amount + profit;
-      const isSecondTrade = tx.requiresApproval;
-
-      if (isSecondTrade) {
-        await updateDoc(txRef, {
-          status: TransactionStatus.Hold,
-          profit,
-          totalReturn
-        });
-        try {
-          await updateDoc(doc(db, 'copy_trades', txId), {
-            status: TransactionStatus.Hold,
-            profit,
-            totalReturn
-          });
-        } catch (err) {
-          console.warn("Global copy_trades status update failed:", err);
+    const tx = transactions.find(t => t.id === txId);
+    if (tx) {
+      await settleCopyTrade(tx);
+    } else {
+      try {
+        const txRef = doc(db, 'users', currentUser.uid, 'transactions', txId);
+        const txSnap = await getDoc(txRef);
+        if (txSnap.exists()) {
+          await settleCopyTrade({ id: txSnap.id, ...txSnap.data() } as Transaction);
         }
-        showToast(`VIP Security check triggered on trade ${tx.id}. Funds placed in Escrow.`, 'warning');
-      } else {
-        await updateDoc(txRef, {
-          status: TransactionStatus.Success,
-          profit,
-          totalReturn
-        });
-        try {
-          await updateDoc(doc(db, 'copy_trades', txId), {
-            status: TransactionStatus.Success,
-            profit,
-            totalReturn
-          });
-        } catch (err) {
-          console.warn("Global copy_trades status update failed:", err);
-        }
-
-        await updateDoc(doc(db, 'users', currentUser.uid), {
-          mainBalance: increment(totalReturn),
-          profitBalance: increment(profit)
-        });
-
-        showToast(`Copy trade complete! +$${profit.toFixed(2)} USDT profits added.`, 'success');
-        
-        // Distribute Level 1 and Level 2 profit commissions
-        await distributeProfitCommissions(currentUser.uid, profit);
+      } catch (err) {
+        console.error(err);
       }
-    } catch (err) {
-      console.error(err);
     }
   };
 
@@ -1416,21 +1415,27 @@ export default function App() {
   };
 
   // KYC Verification Submission
-  const handleUpdateKYC = async (fullName: string, idNumber: string, nationality: string, documentImage: string, phoneNumber: string) => {
+  const handleUpdateKYC = async (fullName: string, idNumber: string, nationality: string, documentImage: string, phoneNumber: string, status: 'verified' | 'pending' = 'verified') => {
     if (!currentUser) return;
     try {
       await updateDoc(doc(db, 'users', currentUser.uid), {
-        kycStatus: 'pending',
+        kycStatus: status,
         kycData: {
           fullName,
           idNumber,
           nationality,
           documentImage,
           phoneNumber,
-          submittedAt: new Date().toISOString()
+          submittedAt: new Date().toISOString(),
+          verifiedAt: status === 'verified' ? new Date().toISOString() : null,
+          kycLevel: status === 'verified' ? 2 : 1
         }
       });
-      showToast('Identity verification submitted. Documents are under review.', 'info');
+      if (status === 'verified') {
+        showToast('🎉 Level 2 Identity Verification Approved! $50,000 USDT daily limit unlocked.', 'success');
+      } else {
+        showToast('Identity verification submitted for review.', 'info');
+      }
     } catch (err) {
       console.error(err);
       showToast('KYC submission failed.', 'error');
@@ -2102,6 +2107,8 @@ export default function App() {
                 user={currentUser} 
                 onNavigate={(screen) => setCurrentScreen(screen)} 
                 unreadChatCount={unreadChatCount} 
+                lang={lang}
+                onLanguageChange={handleLanguageChange}
               />
             )}
 
@@ -2184,6 +2191,7 @@ export default function App() {
                       onShowSupport={() => setCurrentScreen('user-support')}
                       onShowToast={showToast}
                       onUpdateAvatar={handleUpdateAvatar}
+                      lang={lang}
                     />
                   </div>
                 )}
@@ -2322,6 +2330,7 @@ export default function App() {
               <Navbar 
                 currentScreen={currentScreen} 
                 onNavigate={(screen) => setCurrentScreen(screen)} 
+                lang={lang}
               />
             )}
           </>

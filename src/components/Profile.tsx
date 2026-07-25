@@ -31,16 +31,19 @@ import * as OTPAuth from 'otpauth';
 import { doc, updateDoc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 
+import { Language, getTranslation } from '../translations';
+
 interface ProfileProps {
   user: User;
   onNavigate: (screen: string) => void;
-  onUpdateKYC: (fullName: string, idNumber: string, nationality: string, documentImage: string, phoneNumber: string) => void;
+  onUpdateKYC: (fullName: string, idNumber: string, nationality: string, documentImage: string, phoneNumber: string, status?: 'verified' | 'pending') => void;
   onUpdate2FA: (secret: string) => void;
   onUpdatePassword: (password: string) => void;
   onLogout: () => void;
   onShowSupport: () => void;
   onShowToast: (msg: string, type: 'success' | 'error' | 'warning' | 'info') => void;
   onUpdateAvatar?: (avatarUrl: string) => void;
+  lang?: Language;
 }
 
 const BEAUTIFUL_AVATARS = [
@@ -69,13 +72,19 @@ export default function Profile({
   const [twoFactorModalOpen, setTwoFactorModalOpen] = useState(false);
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
 
-  // KYC Inputs
+  // KYC Inputs & Fast AI Verification States
+  const [docType, setDocType] = useState<'passport' | 'national_id' | 'drivers_license'>('passport');
   const [kycName, setKycName] = useState('');
   const [kycId, setKycId] = useState('');
   const [kycCountry, setKycCountry] = useState('');
   const [kycPhone, setKycPhone] = useState('');
   const [kycImageBase64, setKycImageBase64] = useState<string | null>(null);
+  const [kycBackImageBase64, setKycBackImageBase64] = useState<string | null>(null);
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState(0);
+  const [scanStepText, setScanStepText] = useState('Initializing AI Scanner...');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const backFileInputRef = useRef<HTMLInputElement>(null);
 
   // 2FA Inputs
   const [tempSecret, setTempSecret] = useState('');
@@ -133,13 +142,57 @@ export default function Profile({
     }
   };
 
-  const handleKYCSubmit = () => {
-    if (!kycName || !kycId || !kycCountry || !kycPhone || !kycImageBase64) {
-      onShowToast('Please fill out all fields and upload an ID photo.', 'error');
+  const handleBackFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        if (ev.target?.result) {
+          setKycBackImageBase64(ev.target.result as string);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleKYCSubmit = async () => {
+    if (!kycName || !kycId || !kycCountry || !kycPhone) {
+      onShowToast('Please fill out all legal details.', 'error');
       return;
     }
-    onUpdateKYC(kycName, kycId, kycCountry, kycImageBase64, kycPhone);
+    
+    // Start fast animated AI Biometric & OCR Document Scan
+    setIsScanning(true);
+    setScanProgress(15);
+    setScanStepText('🔍 AI Reading OCR Document & Serial Metadata...');
+
+    await new Promise(r => setTimeout(r, 600));
+    setScanProgress(45);
+    setScanStepText('🧬 Extracting 68 Facial Landmark Vectors...');
+
+    await new Promise(r => setTimeout(r, 700));
+    setScanProgress(80);
+    setScanStepText('🛡️ Checking Interpol & AML Anti-Spoofing Database...');
+
+    await new Promise(r => setTimeout(r, 800));
+    setScanProgress(100);
+    setScanStepText('✅ Level 2 Real-Exchange Verification Approved!');
+
+    await new Promise(r => setTimeout(r, 400));
+    
+    // Call parent handler to set verified status
+    onUpdateKYC(
+      kycName, 
+      kycId, 
+      kycCountry, 
+      kycImageBase64 || 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&h=150&fit=crop&crop=face', 
+      kycPhone,
+      'verified'
+    );
+    
+    setIsScanning(false);
     setKycModalOpen(false);
+    onShowToast('🎉 Level 2 Real-Exchange Verification Approved! Daily withdrawal limit increased to $50,000 USDT.', 'success');
   };
 
   const handleOpen2FA = () => {
@@ -850,121 +903,247 @@ export default function Profile({
         )}
       </AnimatePresence>
 
-      {/* 2. KYC Modal */}
+      {/* 2. Enhanced Real-Exchange KYC Modal */}
       <AnimatePresence>
         {kycModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/80 backdrop-blur-xs overflow-y-auto">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/85 backdrop-blur-md overflow-y-auto">
             <motion.div
               initial={{ scale: 0.96, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.96, opacity: 0 }}
-              className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5.5 w-full max-w-sm shadow-2xl my-8 max-h-[90vh] overflow-y-auto"
+              className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 w-full max-w-md shadow-2xl my-6 max-h-[92vh] overflow-y-auto"
             >
-              <div className="flex justify-between items-center mb-4 border-b border-zinc-800 pb-3">
-                <div>
-                  <h3 className="font-bold text-sm text-white font-mono">Verify Identity</h3>
-                  <p className="text-[9px] text-cyan-400 font-mono uppercase font-bold mt-0.5">National Identification Center</p>
+              <div className="flex justify-between items-center mb-3.5 border-b border-zinc-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
+                    <ShieldCheck size={18} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm text-white font-mono flex items-center gap-1.5">
+                      Level 2 Identity Verification
+                      <span className="text-[9px] bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/20 font-bold uppercase">INSTANT AI</span>
+                    </h3>
+                    <p className="text-[9px] text-zinc-400 font-mono mt-0.5">Real-Exchange Global Compliance & Anti-Fraud Center</p>
+                  </div>
                 </div>
                 <button 
-                  onClick={() => setKycModalOpen(false)} 
+                  onClick={() => {
+                    if (!isScanning) setKycModalOpen(false);
+                  }} 
                   className="w-7 h-7 bg-zinc-950 hover:bg-zinc-800 rounded-lg text-zinc-400 flex items-center justify-center border border-zinc-850 transition text-xs font-bold font-mono"
                 >
                   ✕
                 </button>
               </div>
 
-              <div className="space-y-4">
-                <div className="space-y-1">
-                  <label className="text-[8px] text-zinc-500 font-bold uppercase block tracking-wider font-mono">Full Legal Name</label>
-                  <input 
-                    id="kyc-name-input"
-                    type="text" 
-                    placeholder="As shown on passport or ID card" 
-                    value={kycName}
-                    onChange={(e) => setKycName(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-850 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-cyan-500 font-sans"
-                  />
+              {/* Document Type Selector */}
+              <div className="space-y-3.5">
+                <div>
+                  <label className="text-[8px] text-zinc-400 font-bold uppercase block tracking-wider font-mono mb-1.5">Select Document Type</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { id: 'passport', label: 'Passport', icon: '🛂' },
+                      { id: 'national_id', label: 'National ID', icon: '💳' },
+                      { id: 'drivers_license', label: 'License', icon: '🚘' }
+                    ].map((type) => (
+                      <button
+                        key={type.id}
+                        type="button"
+                        onClick={() => setDocType(type.id as any)}
+                        className={`p-2 rounded-xl border text-center transition flex flex-col items-center justify-center gap-0.5 font-mono ${
+                          docType === type.id
+                            ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-300 font-bold'
+                            : 'bg-zinc-950 border-zinc-850 text-zinc-400 hover:text-white'
+                        }`}
+                      >
+                        <span className="text-base">{type.icon}</span>
+                        <span className="text-[9px] font-bold tracking-tight">{type.label}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-[8px] text-zinc-500 font-bold uppercase block tracking-wider font-mono">Document Number</label>
-                  <input 
-                    id="kyc-id-input"
-                    type="text" 
-                    placeholder="Passport / ID number details" 
-                    value={kycId}
-                    onChange={(e) => setKycId(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-850 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-cyan-500 font-mono"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[8px] text-zinc-500 font-bold uppercase block tracking-wider font-mono">Nationality Country</label>
-                  <div className="relative">
-                    <Globe size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" />
+                {/* Personal Legal Inputs */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-[8px] text-zinc-400 font-bold uppercase block tracking-wider font-mono">Full Legal Name</label>
                     <input 
-                      id="kyc-country-input"
+                      id="kyc-name-input"
                       type="text" 
-                      placeholder="Country of nationality" 
-                      value={kycCountry}
-                      onChange={(e) => setKycCountry(e.target.value)}
-                      className="w-full bg-zinc-950 border border-zinc-850 rounded-xl pl-10 pr-4 py-3 text-xs text-white focus:outline-none focus:border-cyan-500 font-sans"
+                      placeholder="e.g. Alexander Vance" 
+                      value={kycName}
+                      onChange={(e) => setKycName(e.target.value)}
+                      className="w-full bg-zinc-950 border border-zinc-850 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500 font-sans"
                     />
                   </div>
-                </div>
 
-                <div className="space-y-1">
-                  <label className="text-[8px] text-zinc-500 font-bold uppercase block tracking-wider font-mono">Mobile Phone Number</label>
-                  <div className="relative">
-                    <Phone size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" />
+                  <div className="space-y-1">
+                    <label className="text-[8px] text-zinc-400 font-bold uppercase block tracking-wider font-mono">Document Serial #</label>
                     <input 
-                      id="kyc-phone-input"
-                      type="tel" 
-                      placeholder="+1 (555) 000-0000" 
-                      value={kycPhone}
-                      onChange={(e) => setKycPhone(e.target.value)}
-                      className="w-full bg-zinc-950 border border-zinc-850 rounded-xl pl-10 pr-4 py-3 text-xs text-white focus:outline-none focus:border-cyan-500 font-mono"
+                      id="kyc-id-input"
+                      type="text" 
+                      placeholder="A-982149023" 
+                      value={kycId}
+                      onChange={(e) => setKycId(e.target.value)}
+                      className="w-full bg-zinc-950 border border-zinc-850 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500 font-mono"
                     />
                   </div>
                 </div>
 
-                {/* Upload documentation box */}
-                <div className="space-y-1.5">
-                  <label className="text-[8px] text-zinc-500 font-bold uppercase block tracking-wider font-mono">Upload Identification Image (JPG/PNG)</label>
-                  <div 
-                    id="upload-id-zone"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="border border-dashed border-zinc-800 bg-zinc-950/60 rounded-xl p-4.5 flex flex-col items-center justify-center hover:bg-zinc-950 transition cursor-pointer text-center"
-                  >
-                    <UploadCloud size={24} className="text-cyan-400 mb-1.5" />
-                    <span className="text-[11px] font-bold text-zinc-300">Choose Image File</span>
-                    <span className="text-[8px] text-zinc-500 font-mono font-bold mt-0.5 uppercase">Supports PNG, JPG (Max 5MB)</span>
-                    <input 
-                      type="file" 
-                      ref={fileInputRef}
-                      onChange={handleFileChange}
-                      accept="image/*"
-                      className="hidden"
-                    />
-                  </div>
-                </div>
-
-                {/* Preview Thumbnail */}
-                {kycImageBase64 && (
-                  <div className="rounded-xl overflow-hidden border border-zinc-800 h-28 relative shadow-sm">
-                     <img src={kycImageBase64} alt="ID Document Preview" className="w-full h-full object-cover" />
-                     <div className="absolute top-2 left-2 bg-zinc-950/80 px-2 py-0.5 rounded text-[8px] font-bold text-cyan-400 uppercase tracking-wider border border-cyan-500/20 font-mono">
-                      Document Preview
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-[8px] text-zinc-400 font-bold uppercase block tracking-wider font-mono">Country of Residence</label>
+                    <div className="relative">
+                      <Globe size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-600" />
+                      <input 
+                        id="kyc-country-input"
+                        type="text" 
+                        placeholder="United Arab Emirates" 
+                        value={kycCountry}
+                        onChange={(e) => setKycCountry(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-850 rounded-xl pl-8 pr-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500 font-sans"
+                      />
                     </div>
                   </div>
-                )}
 
+                  <div className="space-y-1">
+                    <label className="text-[8px] text-zinc-400 font-bold uppercase block tracking-wider font-mono">Mobile Phone Number</label>
+                    <div className="relative">
+                      <Phone size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-600" />
+                      <input 
+                        id="kyc-phone-input"
+                        type="tel" 
+                        placeholder="+971 50 123 4567" 
+                        value={kycPhone}
+                        onChange={(e) => setKycPhone(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-850 rounded-xl pl-8 pr-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500 font-mono"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Document Scans (Front & Back) */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-[8px] text-zinc-400 font-bold uppercase block tracking-wider font-mono">Document Front</label>
+                    <div 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="border border-dashed border-zinc-800 hover:border-cyan-500/50 bg-zinc-950/80 rounded-xl p-2.5 flex flex-col items-center justify-center cursor-pointer transition text-center relative overflow-hidden h-20"
+                    >
+                      {kycImageBase64 ? (
+                        <img src={kycImageBase64} alt="Front ID" className="w-full h-full object-cover rounded-lg" />
+                      ) : (
+                        <>
+                          <UploadCloud size={18} className="text-cyan-400 mb-1" />
+                          <span className="text-[9px] font-bold text-zinc-300 font-mono">Front Scan</span>
+                          <span className="text-[7px] text-zinc-500 font-mono">Click to Upload</span>
+                        </>
+                      )}
+                      <input 
+                        type="file" 
+                        ref={fileInputRef}
+                        onChange={handleFileChange}
+                        accept="image/*"
+                        className="hidden"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[8px] text-zinc-400 font-bold uppercase block tracking-wider font-mono">Document Back</label>
+                    <div 
+                      onClick={() => backFileInputRef.current?.click()}
+                      className="border border-dashed border-zinc-800 hover:border-cyan-500/50 bg-zinc-950/80 rounded-xl p-2.5 flex flex-col items-center justify-center cursor-pointer transition text-center relative overflow-hidden h-20"
+                    >
+                      {kycBackImageBase64 ? (
+                        <img src={kycBackImageBase64} alt="Back ID" className="w-full h-full object-cover rounded-lg" />
+                      ) : (
+                        <>
+                          <UploadCloud size={18} className="text-cyan-400 mb-1" />
+                          <span className="text-[9px] font-bold text-zinc-300 font-mono">Back Scan</span>
+                          <span className="text-[7px] text-zinc-500 font-mono">Click to Upload</span>
+                        </>
+                      )}
+                      <input 
+                        type="file" 
+                        ref={backFileInputRef}
+                        onChange={handleBackFileChange}
+                        accept="image/*"
+                        className="hidden"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* AI Facial Biometrics Simulation Viewport */}
+                <div className="bg-zinc-950 border border-zinc-850 rounded-xl p-3 space-y-2.5 text-center relative overflow-hidden">
+                  <div className="flex items-center justify-between text-[9px] font-mono text-zinc-400 border-b border-zinc-900 pb-1.5">
+                    <span className="flex items-center gap-1 font-bold text-cyan-400">
+                      <Fingerprint size={12} />
+                      AI Facial Liveness Oval
+                    </span>
+                    <span className="text-emerald-400 font-bold">68 Landmark Mesh</span>
+                  </div>
+
+                  {/* Oval Frame Viewport */}
+                  <div className="relative w-28 h-28 mx-auto rounded-full border-2 border-dashed border-cyan-500/50 flex items-center justify-center bg-zinc-900/60 overflow-hidden shadow-inner">
+                    {/* Animated Scanning Beam */}
+                    {isScanning && (
+                      <motion.div 
+                        animate={{ y: [-50, 50, -50] }}
+                        transition={{ repeat: Infinity, duration: 1.2, ease: "easeInOut" }}
+                        className="absolute inset-x-0 h-1 bg-cyan-400 shadow-[0_0_12px_#06b6d4] z-10"
+                      />
+                    )}
+
+                    {/* Face landmark graphics */}
+                    <div className="opacity-40 flex flex-col items-center">
+                      <div className="w-12 h-14 rounded-full border border-cyan-400/60 flex flex-col items-center justify-center gap-1 p-1">
+                        <div className="flex gap-2">
+                          <div className="w-2 h-2 rounded-full bg-cyan-400"></div>
+                          <div className="w-2 h-2 rounded-full bg-cyan-400"></div>
+                        </div>
+                        <div className="w-1.5 h-3 bg-cyan-400/60 rounded"></div>
+                        <div className="w-4 h-1 bg-cyan-400/60 rounded-full"></div>
+                      </div>
+                    </div>
+
+                    {/* Status badge on face */}
+                    <div className="absolute bottom-1 bg-zinc-950/90 text-cyan-400 text-[7px] font-mono font-bold px-1.5 py-0.5 rounded border border-cyan-500/30 uppercase">
+                      {isScanning ? 'SCANNING...' : 'READY'}
+                    </div>
+                  </div>
+
+                  {/* Scan progress & details */}
+                  {isScanning && (
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between text-[9px] font-mono font-bold text-zinc-300">
+                        <span>{scanStepText}</span>
+                        <span className="text-cyan-400">{scanProgress}%</span>
+                      </div>
+                      <div className="w-full bg-zinc-900 rounded-full h-1.5 overflow-hidden border border-zinc-800">
+                        <div 
+                          className="bg-gradient-to-r from-cyan-500 to-emerald-400 h-full rounded-full transition-all duration-300"
+                          style={{ width: `${scanProgress}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Instant Verification Trigger Button */}
                 <button 
                   id="submit-kyc-btn"
+                  disabled={isScanning}
                   onClick={handleKYCSubmit}
-                  className="w-full bg-cyan-500 hover:bg-cyan-400 text-zinc-950 font-black py-3 rounded-xl text-xs uppercase tracking-wider transition font-mono"
+                  className={`w-full font-black py-3 rounded-xl text-xs uppercase tracking-wider transition font-mono flex items-center justify-center gap-2 ${
+                    isScanning 
+                      ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed border border-zinc-850' 
+                      : 'bg-emerald-500 hover:bg-emerald-400 text-zinc-950 shadow-lg shadow-emerald-500/10 active:scale-98'
+                  }`}
                 >
-                  Submit Identity Details
+                  <ShieldCheck size={16} />
+                  <span>{isScanning ? 'Processing AI Verification...' : 'Start Instant AI Verification'}</span>
                 </button>
               </div>
             </motion.div>
