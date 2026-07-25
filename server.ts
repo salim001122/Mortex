@@ -184,8 +184,13 @@ async function sendTelegramBroadcast(botToken: string, channelId: string, templa
   const data = await response.json();
   if (!response.ok || !data.ok) {
     let errDesc = data.description || "Telegram API rejected the broadcast message.";
-    if (errDesc.includes("PEER_ID_INVALID") || errDesc.includes("chat not found")) {
-      errDesc = "Invalid Telegram Channel ID or Bot is not an Admin. Please ensure your Telegram Bot is added as an Administrator in your Telegram Channel.";
+    if (
+      errDesc.includes("PEER_ID_INVALID") ||
+      errDesc.includes("chat not found") ||
+      errDesc.includes("not a member") ||
+      errDesc.includes("Forbidden")
+    ) {
+      errDesc = `Telegram Error: ${data.description}. Please ensure @NGK_Signal_bot is added as an Administrator in channel '${channelId}' with 'Post Messages' permission.`;
     }
     throw new Error(errDesc);
   }
@@ -297,8 +302,13 @@ async function triggerSignalCodeBroadcast(
   const data = await response.json();
   if (!response.ok || !data.ok) {
     let errDesc = data.description || "Failed to post message to Telegram channel.";
-    if (errDesc.includes("PEER_ID_INVALID") || errDesc.includes("chat not found")) {
-      errDesc = "Invalid Telegram Channel ID or Bot is not an Admin. Please ensure your Telegram Bot is added as an Administrator in your Telegram Channel.";
+    if (
+      errDesc.includes("PEER_ID_INVALID") ||
+      errDesc.includes("chat not found") ||
+      errDesc.includes("not a member") ||
+      errDesc.includes("Forbidden")
+    ) {
+      errDesc = `Telegram Error: ${data.description}. Please ensure @NGK_Signal_bot is added as an Administrator in channel '${channelId}' with 'Post Messages' permission.`;
     }
     throw new Error(errDesc);
   }
@@ -547,24 +557,38 @@ async function startServer() {
       const nextPostMs = new Date(nextPostAt).getTime();
       if (nowMs >= nextPostMs) {
         const lastPosterIndex = config.lastPosterIndex || 0;
+        const intervalHrs = autoPosterInterval || 2.5;
+        const futurePostAt = new Date(nowMs + intervalHrs * 60 * 60 * 1000).toISOString();
+        
         console.log(`[AutoPoster] Heartbeat matches schedule. Executing post index ${lastPosterIndex} to channel ${channelId}`);
         
-        // Execute the Telegram sendMessage post
-        await sendTelegramBroadcast(botToken, channelId, lastPosterIndex);
+        try {
+          // Execute the Telegram sendMessage post
+          await sendTelegramBroadcast(botToken, channelId, lastPosterIndex);
 
-        // Schedule the subsequent post
-        const intervalHrs = autoPosterInterval || 2.5;
-        const nextIndex = (lastPosterIndex + 1) % TELEGRAM_TEMPLATES.length;
-        const futurePostAt = new Date(nowMs + intervalHrs * 60 * 60 * 1000).toISOString();
+          // Schedule the subsequent post
+          const nextIndex = (lastPosterIndex + 1) % TELEGRAM_TEMPLATES.length;
 
-        await setDoc(doc(db, "system", "telegram_config"), {
-          lastPosterIndex: nextIndex,
-          lastPostedAt: new Date(nowMs).toISOString(),
-          nextPostAt: futurePostAt,
-          updatedAt: new Date(nowMs).toISOString()
-        }, { merge: true });
+          await setDoc(doc(db, "system", "telegram_config"), {
+            lastPosterIndex: nextIndex,
+            lastPostedAt: new Date(nowMs).toISOString(),
+            nextPostAt: futurePostAt,
+            lastError: null,
+            updatedAt: new Date(nowMs).toISOString()
+          }, { merge: true });
 
-        console.log(`[AutoPoster] Post successful. Next post scheduled for ${futurePostAt} (Index ${nextIndex})`);
+          console.log(`[AutoPoster] Post successful. Next post scheduled for ${futurePostAt} (Index ${nextIndex})`);
+        } catch (postErr: any) {
+          const errMsg = postErr.message || String(postErr);
+          console.warn(`[AutoPoster Warning]: ${errMsg}`);
+
+          // Postpone next retry so we don't spam errors every minute
+          await setDoc(doc(db, "system", "telegram_config"), {
+            nextPostAt: futurePostAt,
+            lastError: errMsg,
+            updatedAt: new Date(nowMs).toISOString()
+          }, { merge: true });
+        }
       }
     } catch (err: any) {
       console.error("[AutoPoster/Signal Error]:", err.message || err);
