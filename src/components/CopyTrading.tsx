@@ -94,9 +94,23 @@ export interface CountrySignalSchedule {
 
 export const COUNTRIES_SCHEDULE: CountrySignalSchedule[] = [
   { name: 'Pakistan', flag: '🇵🇰', timezone: 'UTC+5', offset: 5, firstSignal: '5:30pm', secondSignal: '8:00pm', additionalSignal: '8:40pm' },
+  { name: 'Russia', flag: '🇷🇺', timezone: 'UTC+3 (MSK)', offset: 3, firstSignal: '3:30pm', secondSignal: '6:00pm', additionalSignal: '6:40pm' },
+  { name: 'China', flag: '🇨🇳', timezone: 'UTC+8 (CST)', offset: 8, firstSignal: '8:30pm', secondSignal: '11:00pm', additionalSignal: '11:40pm' },
   { name: 'Egypt', flag: '🇪🇬', timezone: 'UTC+2', offset: 2, firstSignal: '2:30pm', secondSignal: '5:00pm', additionalSignal: '5:40pm' },
   { name: 'Dubai', flag: '🇦🇪', timezone: 'UTC+4', offset: 4, firstSignal: '4:30pm', secondSignal: '7:00pm', additionalSignal: '7:40pm' },
   { name: 'Saudi Arabia', flag: '🇸🇦', timezone: 'UTC+3', offset: 3, firstSignal: '3:30pm', secondSignal: '6:00pm', additionalSignal: '6:40pm' },
+  { name: 'Ghana', flag: '🇬🇭', timezone: 'UTC+0 (GMT)', offset: 0, firstSignal: '12:30pm', secondSignal: '3:00pm', additionalSignal: '3:40pm' },
+  { name: 'Romania', flag: '🇷🇴', timezone: 'UTC+3 (EEST)', offset: 3, firstSignal: '3:30pm', secondSignal: '6:00pm', additionalSignal: '6:40pm' },
+  { name: 'Turkey', flag: '🇹🇷', timezone: 'UTC+3 (TRT)', offset: 3, firstSignal: '3:30pm', secondSignal: '6:00pm', additionalSignal: '6:40pm' },
+  { name: 'Japan', flag: '🇯🇵', timezone: 'UTC+9 (JST)', offset: 9, firstSignal: '9:30pm', secondSignal: '12:00am', additionalSignal: '12:40am' },
+  { name: 'South Korea', flag: '🇰🇷', timezone: 'UTC+9 (KST)', offset: 9, firstSignal: '9:30pm', secondSignal: '12:00am', additionalSignal: '12:40am' },
+  { name: 'Vietnam', flag: '🇻🇳', timezone: 'UTC+7 (ICT)', offset: 7, firstSignal: '7:30pm', secondSignal: '10:00pm', additionalSignal: '10:40pm' },
+  { name: 'France', flag: '🇫🇷', timezone: 'UTC+2 (CEST)', offset: 2, firstSignal: '2:30pm', secondSignal: '5:00pm', additionalSignal: '5:40pm' },
+  { name: 'Nigeria', flag: '🇳🇬', timezone: 'UTC+1 (WAT)', offset: 1, firstSignal: '1:30pm', secondSignal: '4:00pm', additionalSignal: '4:40pm' },
+  { name: 'South Africa', flag: '🇿🇦', timezone: 'UTC+2 (SAST)', offset: 2, firstSignal: '2:30pm', secondSignal: '5:00pm', additionalSignal: '5:40pm' },
+  { name: 'United States', flag: '🇺🇸', timezone: 'UTC-4 (EDT)', offset: -4, firstSignal: '8:30am', secondSignal: '11:00am', additionalSignal: '11:40am' },
+  { name: 'Canada', flag: '🇨🇦', timezone: 'UTC-4 (EDT)', offset: -4, firstSignal: '8:30am', secondSignal: '11:00am', additionalSignal: '11:40am' },
+  { name: 'Australia', flag: '🇦🇺', timezone: 'UTC+10 (AEST)', offset: 10, firstSignal: '10:30pm', secondSignal: '1:00am', additionalSignal: '1:40am' },
   { name: 'Oman', flag: '🇴🇲', timezone: 'UTC+4', offset: 4, firstSignal: '4:30pm', secondSignal: '7:00pm', additionalSignal: '7:40pm' },
   { name: 'Muscat', flag: '🇴🇲', timezone: 'UTC+4', offset: 4, firstSignal: '4:30pm', secondSignal: '7:00pm', additionalSignal: '7:40pm' },
   { name: 'Arab Mamalik', flag: '🇦🇪', timezone: 'UTC+4', offset: 4, firstSignal: '4:30pm', secondSignal: '7:00pm', additionalSignal: '7:40pm' },
@@ -110,7 +124,6 @@ export const COUNTRIES_SCHEDULE: CountrySignalSchedule[] = [
   { name: 'Indonesia', flag: '🇮🇩', timezone: 'UTC+7', offset: 7, firstSignal: '7:30pm', secondSignal: '10:00pm', additionalSignal: '10:40pm' },
   { name: 'Peru', flag: '🇵🇪', timezone: 'UTC-5', offset: -5, firstSignal: '7:30am', secondSignal: '10:00am', additionalSignal: '10:40am' },
   { name: 'Colombia', flag: '🇨🇴', timezone: 'UTC-5', offset: -5, firstSignal: '7:30am', secondSignal: '10:00am', additionalSignal: '10:40am' },
-  { name: 'Romania', flag: '🇷🇴', timezone: 'UTC+3 (DST)', offset: 3, firstSignal: '3:30pm', secondSignal: '6:00pm', additionalSignal: '6:40pm' },
   { name: 'Moldova', flag: '🇲🇩', timezone: 'UTC+3', offset: 3, firstSignal: '3:30pm', secondSignal: '6:00pm', additionalSignal: '6:40pm' },
   { name: 'Philippines', flag: '🇵🇭', timezone: 'UTC+8', offset: 8, firstSignal: '8:30pm', secondSignal: '11:00pm', additionalSignal: '11:40pm' },
   { name: 'Kazakhstan', flag: '🇰🇿', timezone: 'UTC+5', offset: 5, firstSignal: '5:30pm', secondSignal: '8:00pm', additionalSignal: '8:40pm' },
@@ -120,7 +133,6 @@ export const COUNTRIES_SCHEDULE: CountrySignalSchedule[] = [
   { name: 'Syria', flag: '🇸🇾', timezone: 'UTC+3 (DST)', offset: 3, firstSignal: '3:30pm', secondSignal: '6:00pm', additionalSignal: '6:40pm' },
   { name: 'Brazil', flag: '🇧🇷', timezone: 'UTC-3', offset: -3, firstSignal: '9:30am', secondSignal: '12:00pm', additionalSignal: '12:40pm' },
   { name: 'Mexico', flag: '🇲🇽', timezone: 'UTC-5 (CDT)', offset: -5, firstSignal: '7:30am', secondSignal: '10:00am', additionalSignal: '10:40am' },
-  { name: 'Ghana', flag: '🇬🇭', timezone: 'UTC+0', offset: 0, firstSignal: '12:30pm', secondSignal: '3:00pm', additionalSignal: '3:40pm' },
   { name: 'Netherlands', flag: '🇳🇱', timezone: 'UTC+2 (CEST)', offset: 2, firstSignal: '2:30pm', secondSignal: '5:00pm', additionalSignal: '5:40pm' },
   { name: 'Austria', flag: '🇦🇹', timezone: 'CEST (UTC+2)', offset: 2, firstSignal: '2:30pm', secondSignal: '5:00pm', additionalSignal: '5:40pm' }
 ];
@@ -172,6 +184,34 @@ export const getTradersForCountry = (countryName: string): CountryTrader[] => {
 
   if (safeCountry === 'Pakistan') {
     names = ['Hamza Crypto 🇵🇰', 'Ayesha FX 🇵🇰', 'Zayn Scalping 🇵🇰'];
+  } else if (safeCountry === 'Russia') {
+    names = ['Dmitry Volkov 🇷🇺', 'Elena Crypto 🇷🇺', 'Sergei Scalper 🇷🇺'];
+  } else if (safeCountry === 'China') {
+    names = ['Wei Zhang Crypto 🇨🇳', 'Li Na Forex 🇨🇳', 'Chen Wei Quant 🇨🇳'];
+  } else if (safeCountry === 'Ghana') {
+    names = ['Kofi Mensah 🇬🇭', 'Abena Trades 🇬🇭', 'Kwame FX 🇬🇭'];
+  } else if (safeCountry === 'Romania') {
+    names = ['Andrei Popa 🇷🇴', 'Elena Radu 🇷🇴', 'Mihai Crypto 🇷🇴'];
+  } else if (safeCountry === 'Turkey') {
+    names = ['Emre Yilmaz 🇹🇷', 'Zeynep Trade 🇹🇷', 'Burak FX 🇹🇷'];
+  } else if (safeCountry === 'Japan') {
+    names = ['Kenji Sato 🇯🇵', 'Yuki Tanaka 🇯🇵', 'Haruto Crypto 🇯🇵'];
+  } else if (safeCountry === 'South Korea') {
+    names = ['Min-Jun Kim 🇰🇷', 'Seo-Yeon Park 🇰🇷', 'Ji-Hoon Lee 🇰🇷'];
+  } else if (safeCountry === 'Vietnam') {
+    names = ['Nguyen Van Trades 🇻🇳', 'Le Thi Crypto 🇻🇳', 'Tran Hai FX 🇻🇳'];
+  } else if (safeCountry === 'France') {
+    names = ['Jean Laurent 🇫🇷', 'Camille Trade 🇫🇷', 'Antoine Crypto 🇫🇷'];
+  } else if (safeCountry === 'Nigeria') {
+    names = ['Chidubem Trades 🇳🇬', 'Amina FX 🇳🇬', 'Oluwaseun Crypto 🇳🇬'];
+  } else if (safeCountry === 'South Africa') {
+    names = ['Sipho Ndlovu 🇿🇦', 'Thabo Crypto 🇿🇦', 'Zuri Trades 🇿🇦'];
+  } else if (safeCountry === 'United States') {
+    names = ['Michael Vance 🇺🇸', 'Sarah Jenkins 🇺🇸', 'Brandon Quant 🇺🇸'];
+  } else if (safeCountry === 'Canada') {
+    names = ['Lucas Tremblay 🇨🇦', 'Maya Trudeau 🇨🇦', 'Liam Crypto 🇨🇦'];
+  } else if (safeCountry === 'Australia') {
+    names = ['Jack Sydney 🇦🇺', 'Chloe FX 🇦🇺', 'Ethan Trades 🇦🇺'];
   } else if (safeCountry === 'Egypt') {
     names = ['Amr Ibrahim 🇪🇬', 'Nour Trade 🇪🇬', 'Tarek El-Amin 🇪🇬'];
   } else if (safeCountry === 'Dubai') {
@@ -196,6 +236,18 @@ export const getTradersForCountry = (countryName: string): CountryTrader[] => {
     names = ['Sterling FX 🇬🇧', 'Victoria Coins 🇬🇧', 'Oliver Trades 🇬🇧'];
   } else if (safeCountry === 'Indonesia') {
     names = ['Budi Santoso 🇮🇩', 'Siti Rahma 🇮🇩', 'Pratama Trade 🇮🇩'];
+  } else if (safeCountry === 'Spain') {
+    names = ['Carlos Garcia 🇪🇸', 'Lucia Trades 🇪🇸', 'Mateo FX 🇪🇸'];
+  } else if (safeCountry === 'Brazil') {
+    names = ['Thiago Silva 🇧🇷', 'Beatriz FX 🇧🇷', 'Gabriel Crypto 🇧🇷'];
+  } else if (safeCountry === 'Mexico') {
+    names = ['Alejandro FX 🇲🇽', 'Sofia Trades 🇲🇽', 'Mateo Crypto 🇲🇽'];
+  } else if (safeCountry === 'Philippines') {
+    names = ['Juan Dela Cruz 🇵🇭', 'Maria Santos 🇵🇭', 'Ramon Trades 🇵🇭'];
+  } else if (safeCountry === 'Ukraine') {
+    names = ['Oleksandr Crypto 🇺🇦', 'Nataliya Trades 🇺🇦', 'Dmytro FX 🇺🇦'];
+  } else if (safeCountry === 'Poland') {
+    names = ['Piotr Kowalski 🇵🇱', 'Ania Trades 🇵🇱', 'Jakub Crypto 🇵🇱'];
   } else {
     const key = safeCountry.slice(0, 5);
     names = [`${key} Elite`, `${key} Alpha`, `${key} Quant`];

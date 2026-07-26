@@ -169,6 +169,45 @@ export default function App() {
     ERC20: '0x5adfb3f4eec60d388f995ecff770cbc8af02da05'
   };
 
+  // Web3 & MetaMask State
+  const [web3Address, setWeb3Address] = useState<string | null>(null);
+  const [isConnectingWeb3, setIsConnectingWeb3] = useState<boolean>(false);
+
+  // MetaMask Web3 Wallet Connect Handler
+  const handleConnectMetaMask = async () => {
+    setIsConnectingWeb3(true);
+    try {
+      const ethereum = (window as any).ethereum;
+      if (!ethereum) {
+        showToast('MetaMask extension not detected in browser. Please install MetaMask or copy deposit address below.', 'warning');
+        setIsConnectingWeb3(false);
+        return;
+      }
+
+      const accounts = await ethereum.request({ method: 'eth_requestAccounts' });
+      if (accounts && accounts.length > 0) {
+        setWeb3Address(accounts[0]);
+        if (!withdrawAddress) {
+          setWithdrawAddress(accounts[0]);
+        }
+        showToast(`MetaMask Connected: ${accounts[0].slice(0, 6)}...${accounts[0].slice(-4)}`, 'success');
+      } else {
+        showToast('No MetaMask accounts selected.', 'warning');
+      }
+    } catch (err: any) {
+      console.warn("MetaMask connection error:", err);
+      if (err?.code === 4001) {
+        showToast('MetaMask connection request was cancelled by user.', 'info');
+      } else if (err?.code === -32002) {
+        showToast('MetaMask connection request is already pending. Check extension window.', 'warning');
+      } else {
+        showToast(err?.message || 'Failed to connect to MetaMask. Please try again or use manual address.', 'error');
+      }
+    } finally {
+      setIsConnectingWeb3(false);
+    }
+  };
+
   // 1. Toast Notification Helper
   const showToast = (message: string, type: 'success' | 'error' | 'warning' | 'info' = 'info') => {
     setToast({ message, type });
@@ -2364,7 +2403,33 @@ export default function App() {
                 {depositStep === 1 ? (
                   // Network Selector
                   <div className="space-y-4">
-                    <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider font-mono">Select Blockchain Network</label>
+                    {/* Web3 / MetaMask Connect Banner */}
+                    <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/30 rounded-xl p-3 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-7 h-7 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0">
+                          <span className="text-sm">🦊</span>
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-bold text-amber-400 uppercase font-mono tracking-wider">
+                            MetaMask / Web3 Wallet
+                          </p>
+                          <p className="text-[9px] text-zinc-400 font-mono truncate">
+                            {web3Address ? `${web3Address.slice(0, 6)}...${web3Address.slice(-4)}` : 'Connect for auto-transfer'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleConnectMetaMask}
+                        disabled={isConnectingWeb3}
+                        className="bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-[9px] uppercase font-mono px-3 py-1.5 rounded-lg shrink-0 transition"
+                      >
+                        {isConnectingWeb3 ? 'Connecting...' : web3Address ? 'Connected' : 'Connect'}
+                      </button>
+                    </div>
+
+                    <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider font-mono block">Select Blockchain Network</label>
                     <div className="grid grid-cols-3 gap-2">
                       {['BEP20', 'TRC20', 'ERC20'].map(net => {
                         const isSel = depositNetwork === net;
@@ -2571,7 +2636,16 @@ export default function App() {
 
                   {/* Input Address Destination */}
                   <div className="space-y-1.5 font-mono">
-                    <label className="text-[10px] text-zinc-500 font-bold uppercase block">Recipient Address (TRC20 / BEP20)</label>
+                    <div className="flex justify-between items-center">
+                      <label className="text-[10px] text-zinc-500 font-bold uppercase block">Recipient Address (TRC20 / BEP20)</label>
+                      <button
+                        type="button"
+                        onClick={handleConnectMetaMask}
+                        className="text-[9px] text-amber-400 hover:text-amber-300 font-bold uppercase flex items-center gap-1"
+                      >
+                        🦊 {web3Address ? 'Autofill MetaMask' : 'Connect MetaMask'}
+                      </button>
+                    </div>
                     <input 
                       type="text" 
                       placeholder="Enter USDT target address" 
