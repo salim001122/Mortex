@@ -12,7 +12,9 @@ import {
   UserCheck, 
   Activity,
   Headphones,
-  CheckCircle2
+  CheckCircle2,
+  Plus,
+  X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db } from '../firebase';
@@ -80,6 +82,7 @@ interface Message {
   message: string;
   timestamp: string;
   agentAvatar?: string;
+  imageUrl?: string;
 }
 
 export default function AgentSupportPanel({ onNavigate, showToast }: AgentSupportPanelProps) {
@@ -102,6 +105,8 @@ export default function AgentSupportPanel({ onNavigate, showToast }: AgentSuppor
   const [selectedChat, setSelectedChat] = useState<SupportChatSession | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll inside chat
@@ -186,28 +191,72 @@ export default function AgentSupportPanel({ onNavigate, showToast }: AgentSuppor
     showToast('Secure agent session terminated.', 'info');
   };
 
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showToast('Please select a valid image file', 'error');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        const maxDim = 800;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        setSelectedImage(compressedDataUrl);
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
   // Send message from logged support agent
   const handleSendAgentMessage = async () => {
-    if (!loggedAgent || !selectedChat || !inputText.trim()) return;
+    if (!loggedAgent || !selectedChat || (!inputText.trim() && !selectedImage)) return;
 
     const messageText = inputText.trim();
+    const imageToSend = selectedImage;
     setInputText('');
+    setSelectedImage(null);
 
     try {
-      const newMsg = {
+      const newMsg: any = {
         sender: 'agent' as const,
         senderName: `Agent ${loggedAgent.name}`,
-        message: messageText,
+        message: messageText || '📷 Sent an image attachment',
         timestamp: new Date().toISOString(),
         agentAvatar: loggedAgent.avatar
       };
+
+      if (imageToSend) {
+        newMsg.imageUrl = imageToSend;
+      }
 
       // Add to messages subcollection
       await addDoc(collection(db, 'support_chats', selectedChat.id, 'messages'), newMsg);
 
       // Update parent document
       await updateDoc(doc(db, 'support_chats', selectedChat.id), {
-        lastMessage: messageText,
+        lastMessage: imageToSend ? '📷 Image attachment' : messageText,
         lastTimestamp: new Date().toISOString(),
         assignedAgentName: `Agent ${loggedAgent.name}`
       });
@@ -451,6 +500,18 @@ export default function AgentSupportPanel({ onNavigate, showToast }: AgentSuppor
                             <p className="text-xs leading-relaxed font-sans font-medium whitespace-pre-wrap">
                               {m.message}
                             </p>
+
+                            {m.imageUrl && (
+                              <div className="mt-2">
+                                <a href={m.imageUrl} target="_blank" rel="noopener noreferrer">
+                                  <img 
+                                    src={m.imageUrl} 
+                                    alt="Attachment" 
+                                    className="max-w-[220px] max-h-[220px] rounded-xl object-cover border border-zinc-700/80 hover:opacity-95 transition shadow-md" 
+                                  />
+                                </a>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -459,19 +520,55 @@ export default function AgentSupportPanel({ onNavigate, showToast }: AgentSuppor
                   <div ref={chatEndRef} />
                 </div>
 
+                {/* Selected Image Preview Chip */}
+                {selectedImage && (
+                  <div className="flex items-center gap-2 bg-zinc-900 border border-cyan-500/30 p-2 rounded-xl shrink-0 mx-2.5 my-1">
+                    <div className="relative">
+                      <img src={selectedImage} alt="Attachment Preview" className="w-10 h-10 object-cover rounded-lg border border-zinc-800" />
+                      <button
+                        type="button"
+                        onClick={() => setSelectedImage(null)}
+                        className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white rounded-full p-0.5 hover:bg-rose-400 transition"
+                      >
+                        <X size={10} />
+                      </button>
+                    </div>
+                    <div className="text-[10px] text-cyan-400 font-mono font-bold">
+                      Image Ready for Transmission
+                    </div>
+                  </div>
+                )}
+
                 {/* Input Controls */}
-                <div className="p-2.5 border-t border-zinc-900 bg-zinc-950/60 flex gap-2 shrink-0">
+                <div className="p-2.5 border-t border-zinc-900 bg-zinc-950/60 flex items-center gap-2 shrink-0">
+                  <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    accept="image/*" 
+                    className="hidden" 
+                    onChange={handleImageSelect} 
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    title="Attach photo/screenshot"
+                    className="bg-zinc-900 hover:bg-zinc-850 text-cyan-400 border border-zinc-800 w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition active:scale-95"
+                  >
+                    <Plus size={16} />
+                  </button>
+
                   <input 
                     type="text" 
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSendAgentMessage()}
-                    placeholder={`Write your official response to ${selectedChat.username}...`}
-                    className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-zinc-650 outline-none focus:border-cyan-500 font-mono"
+                    placeholder={`Write response to ${selectedChat.username}...`}
+                    className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-zinc-650 outline-none focus:border-cyan-500 font-mono"
                   />
                   <button
                     onClick={handleSendAgentMessage}
-                    className="bg-cyan-500 hover:bg-cyan-400 text-zinc-950 px-4 rounded-xl text-xs font-black transition active:scale-95 uppercase tracking-wider font-mono flex items-center justify-center gap-1"
+                    className="bg-cyan-500 hover:bg-cyan-400 text-zinc-950 px-4 h-9 rounded-xl text-xs font-black transition active:scale-95 uppercase tracking-wider font-mono flex items-center justify-center gap-1 shrink-0"
                   >
                     <Send size={12} />
                     <span>Send</span>

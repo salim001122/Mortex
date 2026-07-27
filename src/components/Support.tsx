@@ -5,7 +5,10 @@ import {
   User as UserIcon, 
   Sparkles,
   Activity,
-  Headphones
+  Headphones,
+  Plus,
+  Image as ImageIcon,
+  X
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { db } from '../firebase';
@@ -23,11 +26,14 @@ interface Message {
   message: string;
   timestamp: string;
   agentAvatar?: string;
+  imageUrl?: string;
 }
 
 export default function Support({ user, onNavigate }: SupportProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Determine active agent based on the last agent message, or default to Agent Sophia
@@ -40,7 +46,7 @@ export default function Support({ user, onNavigate }: SupportProps) {
   // Auto-scroll to bottom of conversation
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, selectedImage]);
 
   // Connect to Firestore real-time customer support chat subcollection
   useEffect(() => {
@@ -64,19 +70,63 @@ export default function Support({ user, onNavigate }: SupportProps) {
     return () => unsubscribe();
   }, [user]);
 
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      alert('Please select a valid image file');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        const maxDim = 800;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        setSelectedImage(compressedDataUrl);
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
   const handleSendMessage = async (textToSend: string) => {
     const trimmed = textToSend.trim();
-    if (!trimmed || !user?.uid) return;
+    if ((!trimmed && !selectedImage) || !user?.uid) return;
 
+    const imageToSend = selectedImage;
     setInputText('');
+    setSelectedImage(null);
 
     try {
-      const newMsg = {
+      const newMsg: any = {
         sender: 'user' as const,
         senderName: user.username || 'Investor',
-        message: trimmed,
+        message: trimmed || '📷 Sent an image attachment',
         timestamp: new Date().toISOString()
       };
+
+      if (imageToSend) {
+        newMsg.imageUrl = imageToSend;
+      }
 
       // Add user message to subcollection
       await addDoc(collection(db, 'support_chats', user.uid, 'messages'), newMsg);
@@ -86,7 +136,7 @@ export default function Support({ user, onNavigate }: SupportProps) {
         userId: user.uid,
         username: user.username || 'Investor',
         userEmail: user.email || 'investor@ngk.exchange',
-        lastMessage: trimmed,
+        lastMessage: imageToSend ? '📷 Image attachment' : trimmed,
         lastTimestamp: new Date().toISOString(),
         status: 'open'
       }, { merge: true });
@@ -207,6 +257,18 @@ export default function Support({ user, onNavigate }: SupportProps) {
                   <p className="text-xs leading-relaxed font-sans font-medium whitespace-pre-wrap">
                     {msg.message}
                   </p>
+
+                  {msg.imageUrl && (
+                    <div className="mt-2">
+                      <a href={msg.imageUrl} target="_blank" rel="noopener noreferrer">
+                        <img 
+                          src={msg.imageUrl} 
+                          alt="Attachment" 
+                          className="max-w-[220px] max-h-[220px] rounded-xl object-cover border border-zinc-700/80 hover:opacity-95 transition shadow-md" 
+                        />
+                      </a>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -215,20 +277,56 @@ export default function Support({ user, onNavigate }: SupportProps) {
         <div ref={chatEndRef} />
       </div>
 
+      {/* Selected Image Preview Chip */}
+      {selectedImage && (
+        <div className="flex items-center gap-2 bg-zinc-900 border border-cyan-500/30 p-2 rounded-xl shrink-0">
+          <div className="relative">
+            <img src={selectedImage} alt="Attachment Preview" className="w-12 h-12 object-cover rounded-lg border border-zinc-800" />
+            <button
+              type="button"
+              onClick={() => setSelectedImage(null)}
+              className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white rounded-full p-0.5 hover:bg-rose-400 transition"
+            >
+              <X size={10} />
+            </button>
+          </div>
+          <div className="text-[10px] text-cyan-400 font-mono font-bold">
+            Image Attached (Ready to Send)
+          </div>
+        </div>
+      )}
+
       {/* Input Container */}
-      <div className="flex gap-2 bg-zinc-900 p-2 rounded-xl border border-zinc-850 shadow-sm shrink-0">
+      <div className="flex items-center gap-2 bg-zinc-900 p-2 rounded-xl border border-zinc-850 shadow-sm shrink-0">
+        <input 
+          type="file" 
+          ref={fileInputRef} 
+          accept="image/*" 
+          className="hidden" 
+          onChange={handleImageSelect} 
+        />
+
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          title="Attach photo/screenshot"
+          className="bg-zinc-800 hover:bg-zinc-750 text-cyan-400 border border-zinc-700/60 w-8.5 h-8.5 rounded-lg flex items-center justify-center shrink-0 transition active:scale-95"
+        >
+          <Plus size={16} />
+        </button>
+
         <input 
           type="text" 
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSendMessage(inputText)}
           placeholder={`Type a message...`}
-          className="flex-1 bg-transparent text-white placeholder-zinc-550 outline-none border-none text-xs px-2 py-2 font-bold font-mono"
+          className="flex-1 bg-transparent text-white placeholder-zinc-550 outline-none border-none text-xs px-1 py-2 font-bold font-mono"
         />
         
         <button
           onClick={() => handleSendMessage(inputText)}
-          className="bg-cyan-500 hover:bg-cyan-400 w-8.5 h-8.5 rounded-lg flex items-center justify-center text-zinc-950 active:scale-95 transition"
+          className="bg-cyan-500 hover:bg-cyan-400 w-8.5 h-8.5 rounded-lg flex items-center justify-center text-zinc-950 shrink-0 active:scale-95 transition"
         >
           <Send size={14} />
         </button>

@@ -23,7 +23,8 @@ import {
   Globe,
   Mail,
   Phone,
-  Shield
+  Shield,
+  AlertTriangle
 } from 'lucide-react';
 
 import { 
@@ -34,7 +35,8 @@ import {
   ChatMessage, 
   VIPRank, 
   TransactionType, 
-  TransactionStatus 
+  TransactionStatus,
+  getEffectiveTier
 } from './types';
 
 import * as OTPAuth from 'otpauth';
@@ -162,50 +164,12 @@ export default function App() {
   const [withdrawAmount, setWithdrawAmount] = useState<string>('');
   const [withdrawAddress, setWithdrawAddress] = useState<string>('');
   const [withdrawPin, setWithdrawPin] = useState<string>('');
+  const [withdrawError, setWithdrawError] = useState<string | null>(null);
 
   const depositAddresses: Record<string, string> = {
     BEP20: '0x9921dc583f33b9acde735720732d7fa0ad8ae344',
     TRC20: 'TXRsYoutdJBu6jmWjgAT29tpgtVuTwr8en',
     ERC20: '0x5adfb3f4eec60d388f995ecff770cbc8af02da05'
-  };
-
-  // Web3 & MetaMask State
-  const [web3Address, setWeb3Address] = useState<string | null>(null);
-  const [isConnectingWeb3, setIsConnectingWeb3] = useState<boolean>(false);
-
-  // MetaMask Web3 Wallet Connect Handler
-  const handleConnectMetaMask = async () => {
-    setIsConnectingWeb3(true);
-    try {
-      const ethereum = (window as any).ethereum;
-      if (!ethereum) {
-        showToast('MetaMask extension not detected in browser. Please install MetaMask or copy deposit address below.', 'warning');
-        setIsConnectingWeb3(false);
-        return;
-      }
-
-      const accounts = await ethereum.request({ method: 'eth_requestAccounts' });
-      if (accounts && accounts.length > 0) {
-        setWeb3Address(accounts[0]);
-        if (!withdrawAddress) {
-          setWithdrawAddress(accounts[0]);
-        }
-        showToast(`MetaMask Connected: ${accounts[0].slice(0, 6)}...${accounts[0].slice(-4)}`, 'success');
-      } else {
-        showToast('No MetaMask accounts selected.', 'warning');
-      }
-    } catch (err: any) {
-      console.warn("MetaMask connection error:", err);
-      if (err?.code === 4001) {
-        showToast('MetaMask connection request was cancelled by user.', 'info');
-      } else if (err?.code === -32002) {
-        showToast('MetaMask connection request is already pending. Check extension window.', 'warning');
-      } else {
-        showToast(err?.message || 'Failed to connect to MetaMask. Please try again or use manual address.', 'error');
-      }
-    } finally {
-      setIsConnectingWeb3(false);
-    }
   };
 
   // 1. Toast Notification Helper
@@ -529,7 +493,7 @@ export default function App() {
         }
 
         await updateDoc(doc(db, 'users', currentUser.uid), {
-          mainBalance: increment(totalReturn),
+          mainBalance: increment(latestTx.amount),
           profitBalance: increment(profit)
         });
 
@@ -771,7 +735,7 @@ export default function App() {
         lastBonusClaim: null,
         copyTradeResetTime: null,
         copyTradeCount: 0,
-        tier: VIPRank.Silver,
+        tier: VIPRank.Bronze,
         isSupportOnline: true,
         kycStatus: 'not_submitted',
         twoFactorEnabled: false,
@@ -1116,9 +1080,11 @@ export default function App() {
     }
 
     // 2. Check if this is the additional signal (Signal 3), which requires minimum $300 balance
+    const totalAvailable = currentUser.mainBalance + currentUser.profitBalance;
+
     if (adminSignal.type === 'signal_3') {
-      if (currentUser.mainBalance < 300) {
-        showToast('Additional Trade blocked! Signal #3 is only permitted for VIP users with a main balance of 300 USDT or more.', 'error');
+      if (totalAvailable < 300) {
+        showToast('Additional Trade blocked! Signal #3 is only permitted for VIP users with a total balance of 300 USDT or more.', 'error');
         return false;
       }
     }
@@ -1128,8 +1094,8 @@ export default function App() {
       return false;
     }
 
-    if (currentUser.mainBalance < amount) {
-      showToast('Insufficient main balance. Please deposit funds.', 'error');
+    if (totalAvailable < amount) {
+      showToast('Insufficient balance. Please deposit funds.', 'error');
       return false;
     }
 
@@ -1169,14 +1135,7 @@ export default function App() {
 
       // Adjust user VIP Rank dynamically based on total Volume
       const newVolume = currentUser.totalVolume + amount;
-      let newTier = currentUser.tier;
-      if (newVolume >= 20000) {
-        newTier = VIPRank.Platinum;
-      } else if (newVolume >= 5000) {
-        newTier = VIPRank.Gold;
-      } else if (newVolume >= 800) {
-        newTier = VIPRank.Silver;
-      }
+      const newTier = getEffectiveTier(newVolume);
 
       const txId = 'NGK-CT-' + Math.random().toString(36).substring(2, 9).toUpperCase();
       const endTime = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 minutes!
@@ -1210,8 +1169,19 @@ export default function App() {
         console.warn("Global copy_trades write failed:", err);
       }
 
+      // Deduct amount: first from mainBalance, then remainder from profitBalance
+      let dedMain = 0;
+      let dedProfit = 0;
+      if (currentUser.mainBalance >= amount) {
+        dedMain = amount;
+      } else {
+        dedMain = currentUser.mainBalance;
+        dedProfit = amount - currentUser.mainBalance;
+      }
+
       await updateDoc(doc(db, 'users', currentUser.uid), {
-        mainBalance: increment(-amount),
+        mainBalance: increment(-dedMain),
+        profitBalance: increment(-dedProfit),
         totalVolume: increment(amount),
         copyTradeCount: totalTradesCount + 1,
         tier: newTier
@@ -1303,7 +1273,7 @@ export default function App() {
       });
 
       await updateDoc(doc(db, 'users', currentUser.uid), {
-        mainBalance: increment(totalReturn),
+        mainBalance: increment(tx.amount),
         profitBalance: increment(profit)
       });
 
@@ -1586,21 +1556,69 @@ export default function App() {
 
   // Withdraw USDT
   const handleConfirmWithdraw = async () => {
+    setWithdrawError(null);
     if (!currentUser) return;
     const amt = parseFloat(withdrawAmount);
     if (isNaN(amt) || amt < 10) {
-      showToast('Minimum withdrawal is 10 USDT.', 'error');
+      const err = 'Minimum withdrawal amount is 10 USDT.';
+      setWithdrawError(err);
+      showToast(err, 'error');
       return;
     }
 
-    if (!withdrawAddress) {
-      showToast('Please enter your receiving wallet address.', 'error');
+    if (!withdrawAddress || withdrawAddress.trim().length < 5) {
+      const err = 'Please enter your valid receiving wallet address.';
+      setWithdrawError(err);
+      showToast(err, 'error');
       return;
     }
 
-    if (withdrawPin !== currentUser.withdrawalPin) {
-      showToast('Incorrect Withdrawal PIN.', 'error');
-      return;
+    // Check if user has 2FA enabled
+    const is2FA = currentUser.twoFactorEnabled && !!currentUser.twoFactorSecret;
+
+    if (is2FA) {
+      if (!withdrawPin || withdrawPin.length !== 6) {
+        const err = 'Please enter your live 6-digit 2FA Authenticator code.';
+        setWithdrawError(err);
+        showToast(err, 'error');
+        return;
+      }
+
+      try {
+        const totp = new OTPAuth.TOTP({
+          issuer: 'NGK',
+          label: currentUser.email,
+          algorithm: 'SHA1',
+          digits: 6,
+          period: 30,
+          secret: currentUser.twoFactorSecret!
+        });
+
+        const delta = totp.validate({
+          token: withdrawPin,
+          window: 2
+        });
+
+        if (delta === null) {
+          const err = 'Invalid 2FA Authenticator Code. Please check Google Authenticator and try again.';
+          setWithdrawError(err);
+          showToast(err, 'error');
+          return;
+        }
+      } catch (totpErr) {
+        console.error("2FA validation error during withdrawal:", totpErr);
+        const err = 'Error validating 2FA code. Please try again.';
+        setWithdrawError(err);
+        showToast(err, 'error');
+        return;
+      }
+    } else {
+      if (withdrawPin !== currentUser.withdrawalPin) {
+        const err = 'Incorrect Withdrawal PIN. Verification failed.';
+        setWithdrawError(err);
+        showToast(err, 'error');
+        return;
+      }
     }
 
     const withdrawable = currentUser.totalVolume >= 800 
@@ -1608,7 +1626,9 @@ export default function App() {
       : currentUser.profitBalance;
 
     if (amt > withdrawable) {
-      showToast(`Insufficient withdrawable balance. Max: $${withdrawable.toFixed(2)} USDT. (Requires $800 total trading volume to unlock principal).`, 'error');
+      const err = `Insufficient withdrawable balance. Max withdrawable: $${withdrawable.toFixed(2)} USDT. (${currentUser.totalVolume < 800 ? '$800 trade volume needed to unlock deposit' : ''})`;
+      setWithdrawError(err);
+      showToast(err, 'error');
       return;
     }
 
@@ -2403,32 +2423,6 @@ export default function App() {
                 {depositStep === 1 ? (
                   // Network Selector
                   <div className="space-y-4">
-                    {/* Web3 / MetaMask Connect Banner */}
-                    <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/30 rounded-xl p-3 flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div className="w-7 h-7 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0">
-                          <span className="text-sm">🦊</span>
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-[10px] font-bold text-amber-400 uppercase font-mono tracking-wider">
-                            MetaMask / Web3 Wallet
-                          </p>
-                          <p className="text-[9px] text-zinc-400 font-mono truncate">
-                            {web3Address ? `${web3Address.slice(0, 6)}...${web3Address.slice(-4)}` : 'Connect for auto-transfer'}
-                          </p>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={handleConnectMetaMask}
-                        disabled={isConnectingWeb3}
-                        className="bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-[9px] uppercase font-mono px-3 py-1.5 rounded-lg shrink-0 transition"
-                      >
-                        {isConnectingWeb3 ? 'Connecting...' : web3Address ? 'Connected' : 'Connect'}
-                      </button>
-                    </div>
-
                     <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider font-mono block">Select Blockchain Network</label>
                     <div className="grid grid-cols-3 gap-2">
                       {['BEP20', 'TRC20', 'ERC20'].map(net => {
@@ -2597,27 +2591,65 @@ export default function App() {
 
                 <div className="space-y-4">
                   {/* Account overview available caps */}
-                  <div className="bg-zinc-950 p-4 rounded border border-zinc-800 relative">
-                    <div className="flex justify-between items-center text-[10px] text-zinc-500 font-bold uppercase font-mono mb-1">
-                      <span>Available Balance</span>
-                      <span>Min: 10 USDT</span>
+                  <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800 space-y-3">
+                    {/* Total Portfolio vs Withdrawable */}
+                    <div className="grid grid-cols-2 gap-2 pb-2.5 border-b border-zinc-900">
+                      <div>
+                        <span className="text-[9px] text-zinc-500 font-bold uppercase font-mono block">Total Net Capital</span>
+                        <span className="text-base font-bold text-white font-mono">
+                          ${(currentUser ? currentUser.mainBalance + currentUser.profitBalance : 0).toFixed(2)} USDT
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[9px] text-emerald-400/90 font-bold uppercase font-mono block">Withdrawable Now</span>
+                        <span className="text-base font-bold text-emerald-400 font-mono">
+                          ${currentUser ? (currentUser.totalVolume >= 800 ? currentUser.mainBalance + currentUser.profitBalance : currentUser.profitBalance).toFixed(2) : '0.00'} USDT
+                        </span>
+                      </div>
                     </div>
 
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-2xl font-bold text-white tracking-tight font-mono">
-                        {currentUser && (currentUser.totalVolume >= 800 ? currentUser.mainBalance + currentUser.profitBalance : currentUser.profitBalance).toFixed(2)}
-                      </span>
-                      <span className="text-[10px] font-bold text-zinc-400 uppercase font-mono">USDT</span>
-                    </div>
+                    {/* Trading Volume Requirement Card */}
+                    <div>
+                      <div className="flex justify-between items-center text-[10px] font-mono font-bold text-zinc-400 mb-1">
+                        <span>Deposit Unlock Volume</span>
+                        <span>${currentUser?.totalVolume.toFixed(0) || 0} / $800 USDT</span>
+                      </div>
+                      <div className="h-1.5 bg-zinc-900 rounded-full overflow-hidden border border-zinc-850">
+                        <div 
+                          className="h-full bg-gradient-to-r from-cyan-500 to-emerald-500 rounded-full transition-all duration-500"
+                          style={{ width: `${Math.min(((currentUser?.totalVolume || 0) / 800) * 100, 100)}%` }}
+                        />
+                      </div>
 
-                    <p className="text-[10px] text-yellow-500 font-semibold mt-2 leading-relaxed font-mono">
-                      ⚠️ Note: You must reach $800 in total trade volume to withdraw your initial deposit. Only your earned profits are withdrawable before this.
-                    </p>
+                      {currentUser && currentUser.totalVolume < 800 ? (
+                        <div className="mt-2 text-[9.5px] text-amber-400/90 bg-amber-950/20 border border-amber-900/30 p-2 rounded-lg font-mono leading-relaxed">
+                          🔒 Deposit locked until $800 volume (<span className="text-amber-300 font-bold">${(800 - currentUser.totalVolume).toFixed(2)} USDT</span> remaining). Earned profits are withdrawable (min 10 USDT).
+                        </div>
+                      ) : (
+                        <div className="mt-2 text-[9.5px] text-emerald-400 bg-emerald-950/20 border border-emerald-900/30 p-2 rounded-lg font-mono leading-relaxed">
+                          🔓 Full Unlocked! Initial deposit and earned profits are 100% withdrawable.
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Input Size */}
                   <div className="space-y-1.5">
-                    <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block font-mono">Amount to Withdraw</label>
+                    <div className="flex justify-between items-center">
+                      <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block font-mono">Amount to Withdraw</label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!currentUser) return;
+                          const maxVal = currentUser.totalVolume >= 800 ? currentUser.mainBalance + currentUser.profitBalance : currentUser.profitBalance;
+                          setWithdrawAmount(maxVal.toFixed(2));
+                        }}
+                        className="text-[9px] text-cyan-400 hover:text-cyan-300 font-bold uppercase font-mono bg-cyan-500/10 hover:bg-cyan-500/20 px-1.5 py-0.5 rounded border border-cyan-500/30 transition"
+                      >
+                        Autofill MAX
+                      </button>
+                    </div>
+
                     <div className="relative bg-zinc-950 rounded px-4 py-3 border border-zinc-800 focus-within:border-cyan-500 transition">
                       <div className="flex items-center gap-2">
                         <img src="https://assets.coingecko.com/coins/images/325/large/Tether.png" className="w-5 h-5 rounded-full" />
@@ -2625,7 +2657,10 @@ export default function App() {
                           type="number" 
                           min="10"
                           value={withdrawAmount}
-                          onChange={(e) => setWithdrawAmount(e.target.value)}
+                          onChange={(e) => {
+                            setWithdrawAmount(e.target.value);
+                            setWithdrawError(null);
+                          }}
                           className="w-full bg-transparent text-white font-bold text-sm outline-none border-none placeholder-zinc-700 font-mono"
                           placeholder="0.00"
                         />
@@ -2636,37 +2671,67 @@ export default function App() {
 
                   {/* Input Address Destination */}
                   <div className="space-y-1.5 font-mono">
-                    <div className="flex justify-between items-center">
-                      <label className="text-[10px] text-zinc-500 font-bold uppercase block">Recipient Address (TRC20 / BEP20)</label>
-                      <button
-                        type="button"
-                        onClick={handleConnectMetaMask}
-                        className="text-[9px] text-amber-400 hover:text-amber-300 font-bold uppercase flex items-center gap-1"
-                      >
-                        🦊 {web3Address ? 'Autofill MetaMask' : 'Connect MetaMask'}
-                      </button>
-                    </div>
+                    <label className="text-[10px] text-zinc-500 font-bold uppercase block">Recipient Address (TRC20 / BEP20)</label>
                     <input 
                       type="text" 
                       placeholder="Enter USDT target address" 
                       value={withdrawAddress}
-                      onChange={(e) => setWithdrawAddress(e.target.value)}
+                      onChange={(e) => {
+                        setWithdrawAddress(e.target.value);
+                        setWithdrawError(null);
+                      }}
                       className="w-full bg-zinc-900 border border-zinc-800 rounded px-4 py-3 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500 font-mono"
                     />
                   </div>
 
-                  {/* Input PIN Authentication code */}
+                  {/* Input PIN or 2FA Authentication code */}
                   <div className="space-y-1.5 font-mono">
-                    <label className="text-[10px] text-zinc-500 font-bold uppercase block">Withdrawal PIN (6 digits)</label>
+                    <div className="flex justify-between items-center">
+                      <label className="text-[10px] text-zinc-500 font-bold uppercase block">
+                        {currentUser?.twoFactorEnabled ? '2FA Authenticator Code (6 Digits)' : 'Withdrawal PIN (6 Digits)'}
+                      </label>
+                      {currentUser?.twoFactorEnabled && (
+                        <span className="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.5 rounded font-bold uppercase font-mono">
+                          🛡️ 2FA Required
+                        </span>
+                      )}
+                    </div>
+
                     <input 
-                      type="password" 
+                      type="text" 
+                      inputMode="numeric"
                       maxLength={6}
-                      placeholder="••••••" 
+                      placeholder={currentUser?.twoFactorEnabled ? "Enter 6-digit 2FA code" : "••••••"} 
                       value={withdrawPin}
-                      onChange={(e) => setWithdrawPin(e.target.value.replace(/\D/g, ''))}
+                      onChange={(e) => {
+                        setWithdrawPin(e.target.value.replace(/\D/g, ''));
+                        setWithdrawError(null);
+                      }}
                       className="w-full bg-zinc-900 border border-zinc-800 rounded px-4 py-3 text-center text-xl tracking-widest text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500 font-mono"
                     />
+
+                    <p className="text-[9.5px] text-zinc-400 font-mono leading-relaxed">
+                      {currentUser?.twoFactorEnabled 
+                        ? '🔒 2FA Active: Enter the live 6-digit code from Google Authenticator.'
+                        : 'Enter your 6-digit withdrawal security PIN.'
+                      }
+                    </p>
                   </div>
+
+                  {/* Inline Warning Modal Popup */}
+                  {withdrawError && (
+                    <motion.div 
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="bg-rose-500/15 border border-rose-500/40 text-rose-300 p-3 rounded-xl text-[10.5px] font-mono font-bold flex items-start gap-2 shadow-lg"
+                    >
+                      <AlertTriangle size={16} className="shrink-0 text-rose-400 mt-0.5" />
+                      <div className="flex-1 leading-normal">
+                        <p className="font-extrabold text-rose-400 uppercase text-[9px] mb-0.5">Withdrawal Verification Failed</p>
+                        <p className="text-rose-200">{withdrawError}</p>
+                      </div>
+                    </motion.div>
+                  )}
 
                   <div className="flex gap-2 pt-2">
                     <button 

@@ -643,8 +643,9 @@ export default function CopyTrading({
       setModalTrader(null);
       return;
     }
+    const availableTradingBal = user.mainBalance + user.profitBalance;
     const amt = parseFloat(investmentAmt);
-    if (isNaN(amt) || amt < 30 || amt > user.mainBalance) return;
+    if (isNaN(amt) || amt < 100 || amt > availableTradingBal) return;
     
     // Proceed to Step 2: Order Number Verification
     setModalStep(2);
@@ -685,8 +686,8 @@ export default function CopyTrading({
       setOrderNumberInput(overrideCode);
     }
 
-    if (adminSignal.type === 'signal_3' && user.mainBalance < 300) {
-      setOrderNumberError("Additional Trade blocked! This signal requires a minimum main balance of 300 USDT.");
+    if (adminSignal.type === 'signal_3' && (user.mainBalance + user.profitBalance) < 300) {
+      setOrderNumberError("Additional Trade blocked! This signal requires a minimum total balance of 300 USDT.");
       return;
     }
 
@@ -1349,7 +1350,8 @@ export default function CopyTrading({
                   {/* Percentage shortcuts */}
                   <div className="grid grid-cols-4 gap-1.5">
                     {[0.25, 0.50, 0.75, 1.0].map((percent) => {
-                      const amount = Math.max(100, Math.floor(user.mainBalance * percent));
+                      const totalAvailable = user.mainBalance + user.profitBalance;
+                      const amount = Math.max(100, Math.floor(totalAvailable * percent));
                       return (
                         <button
                           key={percent}
@@ -1373,10 +1375,10 @@ export default function CopyTrading({
                   </div>
 
                   {/* Balance validator error block */}
-                  {parseFloat(investmentAmt) > user.mainBalance ? (
+                  {parseFloat(investmentAmt) > (user.mainBalance + user.profitBalance) ? (
                     <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 p-2.5 rounded-xl text-[9px] flex items-center gap-1.5 font-mono uppercase font-bold">
                       <AlertTriangle size={12} className="shrink-0" />
-                      <span>Insufficient main balance (${user.mainBalance.toFixed(2)} USDT)</span>
+                      <span>Insufficient balance (${(user.mainBalance + user.profitBalance).toFixed(2)} USDT available)</span>
                     </div>
                   ) : parseFloat(investmentAmt) < 100 ? (
                     <div className="bg-amber-500/10 border border-amber-500/20 text-amber-400 p-2.5 rounded-xl text-[9px] flex items-center gap-1.5 font-mono uppercase font-bold">
@@ -1386,10 +1388,10 @@ export default function CopyTrading({
                   ) : null}
 
                   <button
-                    disabled={isNaN(parseFloat(investmentAmt)) || parseFloat(investmentAmt) < 100 || parseFloat(investmentAmt) > user.mainBalance}
+                    disabled={isNaN(parseFloat(investmentAmt)) || parseFloat(investmentAmt) < 100 || parseFloat(investmentAmt) > (user.mainBalance + user.profitBalance)}
                     onClick={handleProceedToOrderValidation}
                     className={`w-full py-3 rounded-xl font-bold text-xs uppercase tracking-wider text-center transition duration-200 font-mono ${
-                      isNaN(parseFloat(investmentAmt)) || parseFloat(investmentAmt) < 100 || parseFloat(investmentAmt) > user.mainBalance
+                      isNaN(parseFloat(investmentAmt)) || parseFloat(investmentAmt) < 100 || parseFloat(investmentAmt) > (user.mainBalance + user.profitBalance)
                         ? 'bg-zinc-800 text-zinc-500 border border-zinc-850 cursor-not-allowed'
                         : 'bg-cyan-500 text-zinc-950 hover:bg-cyan-400 font-black'
                     }`}

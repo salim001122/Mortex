@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Flame, Globe, ChevronDown, Check, ShieldCheck } from 'lucide-react';
-import { User } from '../types';
+import { User, getEffectiveTier } from '../types';
 import ThreeDLogo from './ThreeDLogo';
 import { Language, LANGUAGES, getTranslation } from '../translations';
 
@@ -64,7 +64,7 @@ export default function Header({
             {/* VIP Tier Badge */}
             <div className="flex items-center gap-0.5 bg-cyan-950 border border-cyan-800/40 px-1.5 py-0.5 rounded-full">
               <span className="text-[8px] font-bold text-cyan-400 uppercase tracking-wide">
-                {user?.tier || 'Bronze'}
+                {getEffectiveTier(user?.totalVolume)}
               </span>
             </div>
 

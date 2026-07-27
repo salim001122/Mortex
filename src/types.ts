@@ -5,6 +5,13 @@ export enum VIPRank {
   Platinum = 'Platinum'
 }
 
+export const getEffectiveTier = (totalVolume: number = 0): VIPRank => {
+  if (totalVolume >= 20000) return VIPRank.Platinum;
+  if (totalVolume >= 5000) return VIPRank.Gold;
+  if (totalVolume >= 800) return VIPRank.Silver;
+  return VIPRank.Bronze;
+};
+
 export enum TransactionType {
   Deposit = 'Deposit',
   Withdraw = 'Withdraw',

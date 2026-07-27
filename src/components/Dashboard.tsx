@@ -17,7 +17,7 @@ import {
   Lock
 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { User, VIPRank, Transaction, TransactionStatus } from '../types';
+import { User, VIPRank, Transaction, TransactionStatus, getEffectiveTier } from '../types';
 
 function ActiveTradeTimer({ endTime }: { endTime?: string }) {
   const [timeLeft, setTimeLeft] = useState<number>(0);
@@ -112,6 +112,8 @@ export default function Dashboard({
   };
 
   const volume = user.totalVolume;
+  const effectiveTier = getEffectiveTier(volume);
+
   let progress = 0;
   let nextRankThreshold = 800;
   let nextRank = VIPRank.Silver;
@@ -174,6 +176,11 @@ export default function Dashboard({
                 {balanceVisible ? <Eye size={16} /> : <EyeOff size={16} />}
               </button>
             </div>
+            
+            <p className="text-[9px] text-zinc-500 font-mono mt-1">
+              Main Deposit (${user.mainBalance.toFixed(2)}) + Earned Profit (${user.profitBalance.toFixed(2)})
+              {activeCopyAmount > 0 && ` + Active Trade ($${activeCopyAmount.toFixed(2)})`}
+            </p>
           </div>
 
           <span className="bg-cyan-500/10 text-cyan-400 border border-cyan-500/25 text-[9px] font-bold px-2.5 py-1 rounded-lg tracking-wider font-mono uppercase flex items-center gap-1.5 shadow-xs">
@@ -188,7 +195,7 @@ export default function Dashboard({
           <div className="bg-zinc-950/40 p-3 rounded-xl border border-zinc-850/60 shadow-inner flex flex-col justify-between">
             <div className="flex items-center gap-1.5 text-[9px] text-zinc-500 font-bold uppercase tracking-wider font-mono">
               <Wallet size={11} className="text-cyan-400" />
-              <span>Main Balance</span>
+              <span>Main Deposit</span>
             </div>
             <p className="text-sm font-black font-mono text-white mt-1.5">
               {balanceVisible ? `$${user.mainBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '••••••'}
@@ -200,7 +207,7 @@ export default function Dashboard({
           <div className="bg-emerald-950/5 p-3 rounded-xl border border-emerald-900/10 shadow-inner flex flex-col justify-between">
             <div className="flex items-center gap-1.5 text-[9px] text-emerald-500/80 font-bold uppercase tracking-wider font-mono">
               <TrendingUp size={11} className="text-emerald-400" />
-              <span>Profit Balance</span>
+              <span>Earned Profits</span>
             </div>
             <p className="text-sm font-black font-mono text-emerald-400 mt-1.5">
               {balanceVisible ? `+$${user.profitBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '••••••'}
@@ -213,10 +220,10 @@ export default function Dashboard({
         <div className="mt-5 border-t border-zinc-850/60 pt-4 relative z-10">
           <div className="flex justify-between items-center text-[10px] text-zinc-500 mb-2 font-bold uppercase font-mono">
             <span className="text-cyan-400 flex items-center gap-1">
-              VIP Tier: {user.tier}
+              VIP Tier: {effectiveTier}
             </span>
             <span>
-              {user.tier === VIPRank.Platinum ? 'MAX RANK' : `Next Rank: ${nextRank} ($${nextRankThreshold})`}
+              {effectiveTier === VIPRank.Platinum ? 'MAX RANK' : `Next Rank: ${nextRank} ($${nextRankThreshold})`}
             </span>
           </div>
           
@@ -229,9 +236,9 @@ export default function Dashboard({
             />
           </div>
 
-          {user.tier !== VIPRank.Platinum && (
+          {effectiveTier !== VIPRank.Platinum && (
             <p className="text-[9px] text-zinc-500 mt-2 font-bold font-mono uppercase tracking-wider">
-              Accumulate <span className="text-cyan-400">${Math.max(nextRankThreshold - volume, 0).toFixed(0)} USDT</span> volume to unlock {nextRank}!
+              Accumulate <span className="text-cyan-400">${Math.max(nextRankThreshold - volume, 0).toFixed(0)} USDT</span> volume to unlock {nextRank} & full withdrawal!
             </p>
           )}
         </div>
