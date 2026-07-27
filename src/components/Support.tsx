@@ -8,11 +8,14 @@ import {
   Headphones,
   Plus,
   Image as ImageIcon,
-  X
+  X,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { db } from '../firebase';
 import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, doc, setDoc } from 'firebase/firestore';
+import { playOutgoingSound, playIncomingSound } from '../lib/sound';
 
 interface SupportProps {
   user: any;
@@ -33,8 +36,11 @@ export default function Support({ user, onNavigate }: SupportProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const prevMsgCountRef = useRef<number>(0);
+  const isFirstLoadRef = useRef<boolean>(true);
 
   // Determine active agent based on the last agent message, or default to Agent Sophia
   const lastAgentMsg = [...messages].reverse().find(m => m.sender === 'agent');
@@ -47,6 +53,25 @@ export default function Support({ user, onNavigate }: SupportProps) {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, selectedImage]);
+
+  // Sound Chime Notification for incoming agent messages
+  useEffect(() => {
+    if (isFirstLoadRef.current) {
+      if (messages.length > 0) {
+        isFirstLoadRef.current = false;
+        prevMsgCountRef.current = messages.length;
+      }
+      return;
+    }
+
+    if (messages.length > prevMsgCountRef.current) {
+      const latestMsg = messages[messages.length - 1];
+      if (latestMsg && latestMsg.sender === 'agent' && soundEnabled) {
+        playIncomingSound();
+      }
+    }
+    prevMsgCountRef.current = messages.length;
+  }, [messages, soundEnabled]);
 
   // Connect to Firestore real-time customer support chat subcollection
   useEffect(() => {
@@ -116,6 +141,10 @@ export default function Support({ user, onNavigate }: SupportProps) {
     setInputText('');
     setSelectedImage(null);
 
+    if (soundEnabled) {
+      playOutgoingSound();
+    }
+
     try {
       const newMsg: any = {
         sender: 'user' as const,
@@ -141,6 +170,20 @@ export default function Support({ user, onNavigate }: SupportProps) {
         status: 'open'
       }, { merge: true });
 
+      // Trigger AI Auto-Reply if it's a text message
+      if (trimmed) {
+        fetch('/api/support-auto-reply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: user.uid,
+            username: user.username || 'Investor',
+            userMessage: trimmed,
+            userEmail: user.email || ''
+          })
+        }).catch((err) => console.error("Auto-reply trigger error:", err));
+      }
+
     } catch (err) {
       console.error("Error writing user message to support chat:", err);
     }
@@ -154,19 +197,33 @@ export default function Support({ user, onNavigate }: SupportProps) {
       className="px-4 pb-4 flex flex-col flex-1 h-full min-h-0 space-y-3"
     >
       {/* Header */}
-      <div className="flex items-center gap-2.5 bg-zinc-900/40 p-3 rounded-xl border border-zinc-900 shrink-0">
-        <button 
-          onClick={() => onNavigate('dashboard')} 
-          className="text-zinc-400 hover:text-white transition p-1.5 hover:bg-zinc-800 rounded-lg"
-        >
-          <ArrowLeft size={16} />
-        </button>
-        <div>
-          <h2 className="text-xs font-bold text-white tracking-tight font-mono uppercase">NGK Customer Desk</h2>
-          <p className="text-[9px] text-[#00bfa5] font-bold uppercase font-mono tracking-wider flex items-center gap-1">
-            <Activity size={9} className="animate-pulse" /> Live Representatives Online
-          </p>
+      <div className="flex items-center justify-between bg-zinc-900/40 p-3 rounded-xl border border-zinc-900 shrink-0">
+        <div className="flex items-center gap-2.5">
+          <button 
+            onClick={() => onNavigate('dashboard')} 
+            className="text-zinc-400 hover:text-white transition p-1.5 hover:bg-zinc-800 rounded-lg"
+          >
+            <ArrowLeft size={16} />
+          </button>
+          <div>
+            <h2 className="text-xs font-bold text-white tracking-tight font-mono uppercase">NGK Customer Desk</h2>
+            <p className="text-[9px] text-[#00bfa5] font-bold uppercase font-mono tracking-wider flex items-center gap-1">
+              <Activity size={9} className="animate-pulse" /> Live Representatives Online
+            </p>
+          </div>
         </div>
+
+        <button
+          onClick={() => setSoundEnabled(!soundEnabled)}
+          title={soundEnabled ? "Mute notification sounds" : "Enable notification sounds"}
+          className={`p-1.5 rounded-lg border text-xs font-mono transition flex items-center gap-1 ${
+            soundEnabled 
+              ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400' 
+              : 'bg-zinc-800 border-zinc-700 text-zinc-400'
+          }`}
+        >
+          {soundEnabled ? <Volume2 size={15} /> : <VolumeX size={15} />}
+        </button>
       </div>
 
       {/* Assigned Agent Box */}

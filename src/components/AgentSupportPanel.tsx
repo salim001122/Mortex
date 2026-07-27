@@ -19,6 +19,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { db } from '../firebase';
 import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, doc, getDocs } from 'firebase/firestore';
+import { playOutgoingSound, playIncomingSound } from '../lib/sound';
 
 interface Agent {
   id: string;
@@ -237,6 +238,8 @@ export default function AgentSupportPanel({ onNavigate, showToast }: AgentSuppor
     const imageToSend = selectedImage;
     setInputText('');
     setSelectedImage(null);
+
+    playOutgoingSound();
 
     try {
       const newMsg: any = {

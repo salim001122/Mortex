@@ -2,7 +2,8 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { initializeApp } from "firebase/app";
-import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
+import { getFirestore, doc, getDoc, setDoc, collection, addDoc, updateDoc } from "firebase/firestore";
+import { GoogleGenAI, Type } from "@google/genai";
 
 // Initialize Firebase App for server-side persistence checks
 const firebaseConfig = {
@@ -325,6 +326,194 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(express.json());
+
+  // API Route: AI Customer Support Auto-Reply based on NGK rules in user's language
+  app.post("/api/support-auto-reply", async (req, res) => {
+    try {
+      const { userId, username, userMessage, userEmail } = req.body;
+      if (!userMessage || !userId) {
+        return res.status(400).json({ ok: false, error: "Missing userId or userMessage." });
+      }
+
+      console.log(`[AI Auto-Support] Processing query from user ${userId} (${username}): "${userMessage}"`);
+
+      let replyText = "";
+      let shouldEscalate = false;
+
+      // Attempt Gemini API generateContent
+      if (process.env.GEMINI_API_KEY) {
+        try {
+          const ai = new GoogleGenAI({
+            apiKey: process.env.GEMINI_API_KEY,
+            httpOptions: {
+              headers: {
+                'User-Agent': 'aistudio-build',
+              }
+            }
+          });
+
+          const prompt = `User query: "${userMessage}"\n\nAnalyze this question, answer accurately based on official NGK Exchange rules in the EXACT SAME LANGUAGE as the user's query, and specify whether to escalate if it's a new or complex issue outside standard rules.`;
+
+          const response = await ai.models.generateContent({
+            model: "gemini-3.6-flash",
+            contents: prompt,
+            config: {
+              systemInstruction: `You are the official Customer Support AI Assistant for NGK Cryptographic Copy-Trading Platform (NGK Exchange).
+
+CRITICAL LANGUAGE RULE:
+- You MUST detect the language of the user's message (e.g., Urdu, Roman Urdu, Hindi, English, Russian, Spanish, Arabic, French, Turkish, etc.) and reply in the EXACT SAME LANGUAGE as the user's question!
+- If the question is asked in Urdu or Roman Urdu (e.g., "withdraw kab hga", "minimum deposit kitna hai"), respond in natural Urdu/Roman Urdu!
+- If the question is in Russian, reply in Russian.
+- If the question is in Spanish, reply in Spanish.
+- If the question is in Arabic, reply in Arabic.
+- If the question is in English, reply in English.
+
+OFFICIAL NGK PLATFORM RULES & KNOWLEDGE BASE:
+1. MINIMUM DEPOSIT:
+   - Minimum deposit is 100 USDT (Supports TRC20, BEP20, and ERC20 networks).
+
+2. COPY TRADING SIGNALS & DAILY RETURNS:
+   - 2 Main daily signals: Signal #1 at 11:00 AM (UK Time) & Signal #2 at 01:00 PM (UK Time). Total +4% daily return (+2% per signal).
+   - Order verification codes are published on Telegram channel (@NGK_Signal_bot) and are valid for 1 Hour.
+   - Additional Signal #3 at 04:00 PM (UK Time) (+2% gain) is available for accounts with a minimum total balance of $300 USDT.
+
+3. WITHDRAWAL RULES:
+   - Minimum withdrawal amount: 10 USDT.
+   - Earned Trading Profits are ALWAYS withdrawable anytime!
+   - Principal/Deposit requires $800 total trading volume (or 8 copy-trades) to unlock principal withdrawal.
+   - Requires 6-digit withdrawal PIN (default: 123456) OR live 6-digit 2FA Google Authenticator code if activated.
+
+4. VIP TIERS:
+   - Bronze ($0 volume): +2.0% profit/trade
+   - Silver ($800+ volume): +2.2% profit/trade
+   - Gold ($5,000+ volume): +2.5% profit/trade
+   - Platinum ($20,000+ volume): +3.0% profit/trade
+
+5. REFERRAL PROGRAM:
+   - Deposit bonuses: $100 -> Inviter $5, Member $3 | $500 -> Inviter $30, Member $20 | $1000 -> Inviter $70, Member $50.
+   - Profit Commissions: Level 1 -> 5%, Level 2 -> 3%.
+
+6. SECURITY & KYC:
+   - Strict 1 account per user/IP/device policy. Mandatory KYC (National ID/Passport) required for withdrawals in Profile tab.
+
+ESCALATION TO LIVE SUPPORT OFFICER:
+- If the question is NOT covered by standard rules (e.g., custom refund request, account lock dispute, payment issue, technical bug, custom partnership request, or explicitly asking for a human officer/agent), reply politely in the user's language stating:
+  "Your request has been forwarded to an official NGK Customer Support Officer. Please wait a moment while an agent reviews your account and responds to you directly."
+  and set "shouldEscalate": true.
+
+Respond strictly in valid JSON format:
+{
+  "reply": "Your response text in the exact language of the user question.",
+  "shouldEscalate": boolean
+}`,
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  reply: { type: Type.STRING },
+                  shouldEscalate: { type: Type.BOOLEAN }
+                },
+                required: ["reply", "shouldEscalate"]
+              }
+            }
+          });
+
+          if (response.text) {
+            const parsed = JSON.parse(response.text.trim());
+            replyText = parsed.reply || "";
+            shouldEscalate = Boolean(parsed.shouldEscalate);
+          }
+        } catch (geminiErr) {
+          console.error("Gemini API call error in support auto-reply:", geminiErr);
+        }
+      }
+
+      // Fallback rule parser if Gemini didn't respond or API key unavailable
+      if (!replyText) {
+        const lowerMsg = userMessage.toLowerCase();
+        
+        // Language detection hint
+        const isUrdu = /[\u0600-\u06FF]/.test(userMessage) || lowerMsg.includes('kia') || lowerMsg.includes('kya') || lowerMsg.includes('kaise') || lowerMsg.includes('kese') || lowerMsg.includes('kab') || lowerMsg.includes('hai') || lowerMsg.includes('kitna') || lowerMsg.includes('batao');
+        const isRussian = /[а-яА-Я]/.test(userMessage);
+        const isArabic = /[\u0600-\u06FF]/.test(userMessage) && !isUrdu;
+        const isSpanish = lowerMsg.includes('cómo') || lowerMsg.includes('depósito') || lowerMsg.includes('retiro') || lowerMsg.includes('hola');
+
+        if (lowerMsg.includes('deposit') || lowerMsg.includes('депозит') || lowerMsg.includes('depósito') || lowerMsg.includes('إيداع') || lowerMsg.includes('ڈیپازٹ') || lowerMsg.includes('dipozit')) {
+          if (isUrdu) {
+            replyText = "NGK میں کم از کم ڈیپازٹ 100 USDT ہے۔ آپ TRC20، BEP20، یا ERC20 نیٹ ورک کے ذریعے رقم جمع کروا سکتے ہیں۔ اگر مزید مدد چاہیے تو ہمارے ایجنٹ کا انتظار کریں۔";
+          } else if (isRussian) {
+            replyText = "Минимальный депозит на NGK составляет 100 USDT (TRC20, BEP20, ERC20). Наш агент поддержки также готов ответить на Ваши вопросы.";
+          } else if (isArabic) {
+            replyText = "الحد الأدنى للإيداع في منصة NGK هو 100 USDT (TRC20, BEP20, ERC20). موظف الدعم متاح للرد عليك.";
+          } else if (isSpanish) {
+            replyText = "El depósito mínimo en NGK es de 100 USDT (redes TRC20, BEP20 o ERC20). Si necesita ayuda adicional, un agente le responderá.";
+          } else {
+            replyText = "The minimum deposit on NGK Exchange is 100 USDT (TRC20, BEP20, or ERC20). An NGK support officer will also assist you shortly if needed.";
+          }
+        } else if (lowerMsg.includes('withdraw') || lowerMsg.includes('вывод') || lowerMsg.includes('retiro') || lowerMsg.includes('سحب') || lowerMsg.includes('ودڈرا') || lowerMsg.includes('ویڈرال')) {
+          if (isUrdu) {
+            replyText = "کم از کم ودڈرا 10 USDT ہے۔ تجارتی منافع کسی بھی وقت نکلوایا جا سکتا ہے۔ اصل ڈیپازٹ ان لاک کرنے کے لیے $800 کا ٹریڈنگ والیوم (یا 8 کاپی ٹریڈز) درکار ہے۔";
+          } else if (isRussian) {
+            replyText = "Минимальный вывод — 10 USDT. Торговая прибыль доступна к выводу в любое время. Для вывода депозита требуется торговый объем $800.";
+          } else if (isArabic) {
+            replyText = "الحد الأدنى للسحب هو 10 USDT. أرباح التداول متاحة للسحب في أي وقت. يتطلب سحب رأس المال التجاري حجم تداول بقيمة $800.";
+          } else {
+            replyText = "Minimum withdrawal is 10 USDT. Trading profits can be withdrawn anytime! Principal deposit requires $800 total trading volume to unlock.";
+          }
+        } else if (lowerMsg.includes('signal') || lowerMsg.includes('сигнал') || lowerMsg.includes('señal') || lowerMsg.includes('إشارة') || lowerMsg.includes('سیگنل')) {
+          if (isUrdu) {
+            replyText = "NGK سگنل کا وقت: پہلا سگنل 11:00 AM اور دوسرا سگنل 01:00 PM (یو کے ٹائم) پر آتا ہے۔ ہر سگنل +2% منافع دیتا ہے! سگنل کوڈ ٹیلیگرام پر دستیاب ہے۔";
+          } else {
+            replyText = "Daily Copy Trading Signals: Signal #1 at 11:00 AM UK Time and Signal #2 at 01:00 PM UK Time (+2% profit each). Codes are published on official Telegram (@NGK_Signal_bot).";
+          }
+        } else {
+          shouldEscalate = true;
+          if (isUrdu) {
+            replyText = "آپ کا سوال موصول ہو گیا ہے۔ برائے مہربانی تھوڑا انتظار کریں، NGK کا کسٹمر سپورٹ ایجنٹ جلد ہی آپ کو جواب دے گا۔";
+          } else if (isRussian) {
+            replyText = "Ваш запрос передан агенту службы поддержки NGK. Пожалуйста, подождите, мы ответим вам в ближайшее время.";
+          } else if (isArabic) {
+            replyText = "تم تحويل استفسارك إلى موظف الدعم الفني المباشر لمنصة NGK. يرجى الانتظار لحظات وسيقوم الموظف بالرد عليك.";
+          } else if (isSpanish) {
+            replyText = "Su consulta ha sido derivada a un agente de soporte oficial de NGK. Por favor espere un momento y le responderemos a la brevedad.";
+          } else {
+            replyText = "Your query has been forwarded to an official NGK Customer Support Officer. Please wait a moment while an agent reviews your request and responds to you.";
+          }
+        }
+      }
+
+      // Add AI reply directly to Firestore support_chats/{userId}/messages
+      const aiMsg = {
+        sender: "agent",
+        senderName: shouldEscalate ? "NGK Agent Sophia" : "NGK AI Assistant",
+        message: replyText,
+        timestamp: new Date().toISOString(),
+        agentAvatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80"
+      };
+
+      await addDoc(collection(db, "support_chats", userId, "messages"), aiMsg);
+
+      // Update parent document
+      await setDoc(doc(db, "support_chats", userId), {
+        userId,
+        username: username || "Investor",
+        userEmail: userEmail || "",
+        lastMessage: replyText,
+        lastTimestamp: new Date().toISOString(),
+        status: shouldEscalate ? "pending_agent" : "open",
+        assignedAgentName: shouldEscalate ? "NGK Support Desk" : "NGK AI Assistant"
+      }, { merge: true });
+
+      return res.json({
+        ok: true,
+        reply: replyText,
+        shouldEscalate
+      });
+    } catch (err: any) {
+      console.error("Support Auto-Reply Endpoint Error:", err);
+      return res.status(500).json({ ok: false, error: err.message || "Failed to process auto-reply." });
+    }
+  });
 
   // API Route: Secure Telegram proxy to deliver messages server-side
   app.post("/api/telegram-proxy", async (req, res) => {
