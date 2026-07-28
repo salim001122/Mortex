@@ -59,7 +59,11 @@ export interface User {
     idNumber: string;
     nationality: string;
     documentImage: string;
+    backDocumentImage?: string;
+    phoneNumber?: string;
     submittedAt: string;
+    verifiedAt?: string | null;
+    kycLevel?: number;
   };
   copyTradeCount: number;
   copyTradeResetTime: string | null; // ISO string

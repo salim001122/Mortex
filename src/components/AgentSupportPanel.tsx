@@ -14,7 +14,8 @@ import {
   Headphones,
   CheckCircle2,
   Plus,
-  X
+  X,
+  ShieldCheck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db } from '../firebase';
@@ -104,9 +105,12 @@ export default function AgentSupportPanel({ onNavigate, showToast }: AgentSuppor
   // Dashboard States
   const [chats, setChats] = useState<SupportChatSession[]>([]);
   const [selectedChat, setSelectedChat] = useState<SupportChatSession | null>(null);
+  const [selectedUserDoc, setSelectedUserDoc] = useState<any>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -114,6 +118,24 @@ export default function AgentSupportPanel({ onNavigate, showToast }: AgentSuppor
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Sync active user's document for real-time KYC review
+  useEffect(() => {
+    if (!loggedAgent || !selectedChat) {
+      setSelectedUserDoc(null);
+      return;
+    }
+
+    const unsubUser = onSnapshot(doc(db, 'users', selectedChat.id), (snapshot) => {
+      if (snapshot.exists()) {
+        setSelectedUserDoc(snapshot.data());
+      } else {
+        setSelectedUserDoc(null);
+      }
+    });
+
+    return () => unsubUser();
+  }, [loggedAgent, selectedChat]);
 
   // Sync active support chat sessions from Firestore
   useEffect(() => {
@@ -267,6 +289,72 @@ export default function AgentSupportPanel({ onNavigate, showToast }: AgentSuppor
     } catch (err) {
       console.error("Error sending agent message:", err);
       showToast('Error syncing communication block.', 'error');
+    }
+  };
+
+  // Customer Support Action: Approve KYC
+  const handleApproveKYC = async () => {
+    if (!selectedChat || !loggedAgent) return;
+    try {
+      await updateDoc(doc(db, 'users', selectedChat.id), {
+        kycStatus: 'verified',
+        'kycData.verifiedAt': new Date().toISOString(),
+        'kycData.kycLevel': 2
+      });
+
+      const fullName = selectedUserDoc?.kycData?.fullName || selectedChat.username || 'Investor';
+      const approvalMsg = `✅ IDENTITY VERIFICATION APPROVED!\n\nDear ${fullName}, your Level 2 Identity Verification (KYC) has been officially reviewed and APPROVED by Customer Support Agent ${loggedAgent.name}.\n\n• Verified Status: Level 2 VIP Active\n• Daily Withdrawal Limit: $50,000 USDT Unlocked`;
+
+      await addDoc(collection(db, 'support_chats', selectedChat.id, 'messages'), {
+        sender: 'agent',
+        senderName: `Agent ${loggedAgent.name}`,
+        message: approvalMsg,
+        timestamp: new Date().toISOString(),
+        agentAvatar: loggedAgent.avatar
+      });
+
+      await updateDoc(doc(db, 'support_chats', selectedChat.id), {
+        lastMessage: '✅ KYC Verification Approved',
+        lastTimestamp: new Date().toISOString()
+      });
+
+      playOutgoingSound();
+      showToast(`✅ KYC Approved for ${selectedChat.username}!`, 'success');
+    } catch (err) {
+      console.error("Error approving KYC:", err);
+      showToast('Failed to approve KYC.', 'error');
+    }
+  };
+
+  // Customer Support Action: Reject KYC
+  const handleRejectKYC = async () => {
+    if (!selectedChat || !loggedAgent) return;
+    try {
+      await updateDoc(doc(db, 'users', selectedChat.id), {
+        kycStatus: 'not_submitted'
+      });
+
+      const fullName = selectedUserDoc?.kycData?.fullName || selectedChat.username || 'Investor';
+      const rejectMsg = `❌ IDENTITY VERIFICATION REJECTED\n\nDear ${fullName}, your recent KYC document submission could not be verified by Agent ${loggedAgent.name}.\n\nReason: Document photo or serial details failed validation. Please re-open the Verify Identity (KYC) section in your Profile and re-upload clear photos of your front & back ID documents.`;
+
+      await addDoc(collection(db, 'support_chats', selectedChat.id, 'messages'), {
+        sender: 'agent',
+        senderName: `Agent ${loggedAgent.name}`,
+        message: rejectMsg,
+        timestamp: new Date().toISOString(),
+        agentAvatar: loggedAgent.avatar
+      });
+
+      await updateDoc(doc(db, 'support_chats', selectedChat.id), {
+        lastMessage: '❌ KYC Verification Rejected',
+        lastTimestamp: new Date().toISOString()
+      });
+
+      playOutgoingSound();
+      showToast(`❌ KYC Rejected for ${selectedChat.username}.`, 'warning');
+    } catch (err) {
+      console.error("Error rejecting KYC:", err);
+      showToast('Failed to reject KYC.', 'error');
     }
   };
 
@@ -463,11 +551,131 @@ export default function AgentSupportPanel({ onNavigate, showToast }: AgentSuppor
                       <p className="text-[8px] text-zinc-500 font-mono truncate">{selectedChat.userEmail}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1.5 text-[8px] text-emerald-400 font-bold uppercase font-mono shrink-0">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                    <span>Live Tunnel Secured</span>
+
+                  <div className="flex items-center gap-2">
+                    {/* User KYC Status Badge */}
+                    {selectedUserDoc?.kycStatus === 'pending' ? (
+                      <span className="text-[8px] font-black uppercase font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/40 animate-pulse flex items-center gap-1">
+                        <ShieldCheck size={10} /> KYC Pending
+                      </span>
+                    ) : selectedUserDoc?.kycStatus === 'verified' ? (
+                      <span className="text-[8px] font-black uppercase font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center gap-1">
+                        <CheckCircle2 size={10} /> KYC Verified
+                      </span>
+                    ) : (
+                      <span className="text-[8px] font-bold uppercase font-mono px-2 py-0.5 rounded border border-zinc-800 text-zinc-500">
+                        Unverified
+                      </span>
+                    )}
+                    <div className="flex items-center gap-1.5 text-[8px] text-emerald-400 font-bold uppercase font-mono shrink-0">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                      <span className="hidden sm:inline">Live Tunnel</span>
+                    </div>
                   </div>
                 </div>
+
+                {/* KYC Review Request Box for Support Officers */}
+                {selectedUserDoc?.kycStatus === 'pending' && selectedUserDoc?.kycData && (
+                  <div className="m-2.5 p-3.5 bg-gradient-to-r from-amber-950/40 via-zinc-900 to-zinc-950 border border-amber-500/40 rounded-xl space-y-3 shrink-0 shadow-lg relative overflow-hidden">
+                    <div className="flex items-center justify-between border-b border-amber-500/20 pb-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold">
+                          <ShieldCheck size={14} />
+                        </div>
+                        <div>
+                          <h4 className="text-[11px] font-black text-amber-300 font-mono uppercase tracking-wide">
+                            📄 KYC Verification Review Request
+                          </h4>
+                          <p className="text-[8px] text-zinc-400 font-mono">User UID: {selectedChat.id}</p>
+                        </div>
+                      </div>
+                      <span className="text-[8px] bg-amber-500/20 text-amber-300 font-black px-2 py-0.5 rounded font-mono uppercase tracking-wider animate-pulse border border-amber-500/30">
+                        PENDING DECISION
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-[9px] font-mono text-zinc-300">
+                      <div className="bg-zinc-950/70 p-2 rounded-lg border border-zinc-850 space-y-0.5">
+                        <span className="text-[7.5px] text-zinc-500 uppercase block font-bold">Full Legal Name:</span>
+                        <span className="font-bold text-white truncate block">{selectedUserDoc.kycData.fullName || 'N/A'}</span>
+                      </div>
+
+                      <div className="bg-zinc-950/70 p-2 rounded-lg border border-zinc-850 space-y-0.5">
+                        <span className="text-[7.5px] text-zinc-500 uppercase block font-bold">Document Serial #:</span>
+                        <span className="font-bold text-cyan-300 truncate block">{selectedUserDoc.kycData.idNumber || 'N/A'}</span>
+                      </div>
+
+                      <div className="bg-zinc-950/70 p-2 rounded-lg border border-zinc-850 space-y-0.5">
+                        <span className="text-[7.5px] text-zinc-500 uppercase block font-bold">Nationality:</span>
+                        <span className="font-bold text-white truncate block">{selectedUserDoc.kycData.nationality || 'N/A'}</span>
+                      </div>
+
+                      <div className="bg-zinc-950/70 p-2 rounded-lg border border-zinc-850 space-y-0.5">
+                        <span className="text-[7.5px] text-zinc-500 uppercase block font-bold">Phone Number:</span>
+                        <span className="font-bold text-emerald-400 truncate block">{selectedUserDoc.kycData.phoneNumber || 'N/A'}</span>
+                      </div>
+                    </div>
+
+                    {/* Document Thumbnails */}
+                    <div className="space-y-1">
+                      <span className="text-[8px] text-zinc-400 font-bold font-mono uppercase tracking-wider block">
+                        Uploaded Documents (Click image to expand):
+                      </span>
+                      <div className="flex gap-2">
+                        {selectedUserDoc.kycData.documentImage && (
+                          <div 
+                            onClick={() => setPreviewImage(selectedUserDoc.kycData.documentImage)}
+                            className="relative group cursor-pointer border border-zinc-800 hover:border-cyan-500 rounded-lg overflow-hidden bg-zinc-950 transition"
+                          >
+                            <img 
+                              src={selectedUserDoc.kycData.documentImage} 
+                              alt="Front ID" 
+                              className="w-20 h-14 object-cover"
+                            />
+                            <div className="absolute inset-0 bg-black/40 group-hover:bg-black/10 flex items-center justify-center text-white text-[8px] font-mono font-bold transition">
+                              <span>Front ID</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {selectedUserDoc.kycData.backDocumentImage && (
+                          <div 
+                            onClick={() => setPreviewImage(selectedUserDoc.kycData.backDocumentImage)}
+                            className="relative group cursor-pointer border border-zinc-800 hover:border-cyan-500 rounded-lg overflow-hidden bg-zinc-950 transition"
+                          >
+                            <img 
+                              src={selectedUserDoc.kycData.backDocumentImage} 
+                              alt="Back ID" 
+                              className="w-20 h-14 object-cover"
+                            />
+                            <div className="absolute inset-0 bg-black/40 group-hover:bg-black/10 flex items-center justify-center text-white text-[8px] font-mono font-bold transition">
+                              <span>Back ID</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Officer Action Buttons */}
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        onClick={handleApproveKYC}
+                        className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-black py-2.5 px-3 rounded-lg text-[10px] uppercase font-mono tracking-wider transition active:scale-95 flex items-center justify-center gap-1.5 shadow-md"
+                      >
+                        <CheckCircle2 size={13} />
+                        <span>Approve Level 2 KYC</span>
+                      </button>
+
+                      <button
+                        onClick={handleRejectKYC}
+                        className="bg-rose-500/20 hover:bg-rose-500 text-rose-400 hover:text-white border border-rose-500/40 font-black py-2.5 px-3 rounded-lg text-[10px] uppercase font-mono tracking-wider transition active:scale-95 flex items-center justify-center gap-1.5"
+                      >
+                        <X size={13} />
+                        <span>Reject KYC</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Messages Viewport */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-zinc-950/40">
@@ -506,13 +714,12 @@ export default function AgentSupportPanel({ onNavigate, showToast }: AgentSuppor
 
                             {m.imageUrl && (
                               <div className="mt-2">
-                                <a href={m.imageUrl} target="_blank" rel="noopener noreferrer">
-                                  <img 
-                                    src={m.imageUrl} 
-                                    alt="Attachment" 
-                                    className="max-w-[220px] max-h-[220px] rounded-xl object-cover border border-zinc-700/80 hover:opacity-95 transition shadow-md" 
-                                  />
-                                </a>
+                                <img 
+                                  src={m.imageUrl} 
+                                  alt="Attachment" 
+                                  onClick={() => setPreviewImage(m.imageUrl)}
+                                  className="max-w-[220px] max-h-[220px] rounded-xl object-cover border border-zinc-700/80 hover:opacity-90 transition shadow-md cursor-pointer" 
+                                />
                               </div>
                             )}
                           </div>
@@ -592,6 +799,36 @@ export default function AgentSupportPanel({ onNavigate, showToast }: AgentSuppor
           </div>
         </div>
       )}
+
+      {/* High-Res Image Inspection Lightbox Modal */}
+      <AnimatePresence>
+        {previewImage && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setPreviewImage(null)}
+            className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 cursor-zoom-out"
+          >
+            <div className="relative max-w-4xl max-h-[90vh] flex flex-col items-center">
+              <button
+                onClick={() => setPreviewImage(null)}
+                className="absolute -top-10 right-0 text-zinc-400 hover:text-white bg-zinc-900 border border-zinc-800 rounded-full p-2 transition"
+              >
+                <X size={18} />
+              </button>
+              <img
+                src={previewImage}
+                alt="Document High Res View"
+                className="max-w-full max-h-[85vh] object-contain rounded-xl border border-zinc-800 shadow-2xl"
+              />
+              <span className="text-[10px] text-zinc-400 font-mono mt-2 uppercase tracking-widest bg-zinc-900/80 px-3 py-1 rounded-full border border-zinc-800">
+                High Resolution Inspection — Click anywhere to close
+              </span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

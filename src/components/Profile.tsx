@@ -36,7 +36,7 @@ import { Language, getTranslation } from '../translations';
 interface ProfileProps {
   user: User;
   onNavigate: (screen: string) => void;
-  onUpdateKYC: (fullName: string, idNumber: string, nationality: string, documentImage: string, phoneNumber: string, status?: 'verified' | 'pending') => void;
+  onUpdateKYC: (fullName: string, idNumber: string, nationality: string, documentImage: string, phoneNumber: string, status?: 'verified' | 'pending', backDocumentImage?: string) => void;
   onUpdate2FA: (secret: string) => void;
   onUpdatePassword: (password: string) => void;
   onLogout: () => void;
@@ -160,6 +160,11 @@ export default function Profile({
       onShowToast('Please fill out all legal details.', 'error');
       return;
     }
+
+    if (!kycImageBase64) {
+      onShowToast('Please upload a clear photo of your Front ID document.', 'error');
+      return;
+    }
     
     // Start fast animated AI Biometric & OCR Document Scan
     setIsScanning(true);
@@ -172,27 +177,28 @@ export default function Profile({
 
     await new Promise(r => setTimeout(r, 700));
     setScanProgress(80);
-    setScanStepText('🛡️ Checking Interpol & AML Anti-Spoofing Database...');
+    setScanStepText('🛡️ Transmitting Encrypted Payload to Customer Desk...');
 
     await new Promise(r => setTimeout(r, 800));
     setScanProgress(100);
-    setScanStepText('✅ Level 2 Real-Exchange Verification Approved!');
+    setScanStepText('✅ KYC Documents Submitted to Customer Support!');
 
     await new Promise(r => setTimeout(r, 400));
     
-    // Call parent handler to set verified status
+    // Call parent handler to set status as pending and send to support panel
     onUpdateKYC(
       kycName, 
       kycId, 
       kycCountry, 
-      kycImageBase64 || 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&h=150&fit=crop&crop=face', 
+      kycImageBase64, 
       kycPhone,
-      'verified'
+      'pending',
+      kycBackImageBase64 || undefined
     );
     
     setIsScanning(false);
     setKycModalOpen(false);
-    onShowToast('🎉 Level 2 Real-Exchange Verification Approved! Daily withdrawal limit increased to $50,000 USDT.', 'success');
+    onShowToast('📄 KYC submitted successfully! Our Customer Support team is reviewing your documents.', 'info');
   };
 
   const handleOpen2FA = () => {
@@ -607,8 +613,10 @@ export default function Profile({
             onClick={() => {
               if (kycStatus === 'not_submitted') {
                 setKycModalOpen(true);
-              } else {
-                onShowToast(`Your identity verification status is currently: ${kycStatus.toUpperCase()}`, 'info');
+              } else if (kycStatus === 'pending') {
+                onShowToast('⏳ Your KYC verification is under review by Customer Support. You will receive a message in Support Chat once approved.', 'info');
+              } else if (kycStatus === 'verified') {
+                onShowToast('✅ Your identity verification is APPROVED! Level 2 VIP status unlocked.', 'success');
               }
             }}
             className="p-4 flex items-center justify-between hover:bg-zinc-900/40 cursor-pointer transition duration-150"

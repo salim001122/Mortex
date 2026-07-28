@@ -1448,7 +1448,7 @@ export default function App() {
   };
 
   // KYC Verification Submission
-  const handleUpdateKYC = async (fullName: string, idNumber: string, nationality: string, documentImage: string, phoneNumber: string, status: 'verified' | 'pending' = 'verified') => {
+  const handleUpdateKYC = async (fullName: string, idNumber: string, nationality: string, documentImage: string, phoneNumber: string, status: 'verified' | 'pending' = 'pending', backDocumentImage?: string) => {
     if (!currentUser) return;
     try {
       await updateDoc(doc(db, 'users', currentUser.uid), {
@@ -1458,16 +1458,53 @@ export default function App() {
           idNumber,
           nationality,
           documentImage,
+          backDocumentImage: backDocumentImage || null,
           phoneNumber,
           submittedAt: new Date().toISOString(),
           verifiedAt: status === 'verified' ? new Date().toISOString() : null,
           kycLevel: status === 'verified' ? 2 : 1
         }
       });
+
+      // Forward submission directly into Customer Support Chat session for Customer Desk Officers
+      const kycSummaryMessage = `📄 [KYC SUBMISSION DETAILS]\n👤 Full Name: ${fullName}\n💳 ID/Passport #: ${idNumber}\n🌍 Nationality: ${nationality}\n📱 Phone #: ${phoneNumber}\n⏳ Status: PENDING CUSTOMER DESK REVIEW`;
+
+      const chatDocRef = doc(db, 'support_chats', currentUser.uid);
+      const messagesRef = collection(db, 'support_chats', currentUser.uid, 'messages');
+
+      await setDoc(chatDocRef, {
+        userId: currentUser.uid,
+        username: currentUser.username || fullName || 'Investor',
+        userEmail: currentUser.email || '',
+        lastMessage: `📄 New KYC Submission: ${fullName}`,
+        lastTimestamp: new Date().toISOString(),
+        status: 'open'
+      }, { merge: true });
+
+      // Add main document message with Front ID picture attached
+      await addDoc(messagesRef, {
+        sender: 'user',
+        senderName: currentUser.username || fullName,
+        message: kycSummaryMessage,
+        imageUrl: documentImage || null,
+        timestamp: new Date().toISOString()
+      });
+
+      // If Back ID photo exists, attach it as a separate message
+      if (backDocumentImage) {
+        await addDoc(messagesRef, {
+          sender: 'user',
+          senderName: currentUser.username || fullName,
+          message: `📄 [BACK OF ID DOCUMENT SCAN]`,
+          imageUrl: backDocumentImage,
+          timestamp: new Date().toISOString()
+        });
+      }
+
       if (status === 'verified') {
         showToast('🎉 Level 2 Identity Verification Approved! $50,000 USDT daily limit unlocked.', 'success');
       } else {
-        showToast('Identity verification submitted for review.', 'info');
+        showToast('📄 Identity Verification submitted to Customer Support for review!', 'info');
       }
     } catch (err) {
       console.error(err);
