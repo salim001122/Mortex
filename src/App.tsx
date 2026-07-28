@@ -1119,14 +1119,19 @@ export default function App() {
         return false;
       }
 
-      // 1. Verify that this specific user has not already used this order/signal code
+      // 1. Verify that this specific user has not already used this order/signal code with an active or completed trade
       const qCode = query(
         collection(db, 'users', currentUser.uid, 'transactions'),
         where('type', '==', TransactionType.CopyTrade),
         where('orderNumber', '==', cleanCode)
       );
       const codeSnap = await getDocs(qCode);
-      if (!codeSnap.empty) {
+      const activeCodeUses = codeSnap.docs.filter(d => {
+        const st = d.data().status;
+        return st !== TransactionStatus.Cancelled && st !== TransactionStatus.Failed;
+      });
+
+      if (activeCodeUses.length > 0) {
         showToast('You have already deployed a license with this signal code. Please wait for the next signal code.', 'error');
         return false;
       }
@@ -1138,19 +1143,27 @@ export default function App() {
       );
       const snapshot = await getDocs(q);
       
-      // Calculate copy trades placed in the last 24 hours
-      const nowTimeMs = Date.now();
-      const userCopyTradesLast24h = snapshot.docs
-        .map(doc => doc.data() as Transaction)
-        .filter(t => (nowTimeMs - new Date(t.timestamp).getTime()) < 24 * 60 * 60 * 1000);
+      // Calculate valid (non-cancelled, non-failed) copy trades placed TODAY (current UTC calendar day)
+      const allCopyTrades = snapshot.docs.map(doc => doc.data() as Transaction);
+      const validCopyTrades = allCopyTrades.filter(
+        t => t.status !== TransactionStatus.Cancelled && t.status !== TransactionStatus.Failed
+      );
 
-      if (userCopyTradesLast24h.length >= 2) {
-        showToast('Daily limit of 2 copy trades reached. Please wait for the next 24-hour cycle to participate.', 'warning');
+      const now = new Date();
+      const startOfTodayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+
+      const tradesToday = validCopyTrades.filter(t => {
+        const tradeTime = new Date(t.timestamp).getTime();
+        return tradeTime >= startOfTodayUtc;
+      });
+
+      if (tradesToday.length >= 2) {
+        showToast('Daily limit of 2 copy trades reached. Please wait for tomorrow\'s signal cycle to participate.', 'warning');
         return false;
       }
 
-      const totalTradesCount = snapshot.docs.length;
-      const isSecondTrade = totalTradesCount === 1;
+      const isSecondTrade = tradesToday.length === 1;
+      const totalTradesCount = validCopyTrades.length;
 
       // Adjust user VIP Rank dynamically based on total Volume
       const newVolume = currentUser.totalVolume + amount;
