@@ -25,7 +25,8 @@ export enum TransactionStatus {
   Pending = 'Pending',
   Success = 'Success',
   Failed = 'Failed',
-  Hold = 'Hold'
+  Hold = 'Hold',
+  Rejected = 'Rejected'
 }
 
 export interface User {
@@ -88,6 +89,8 @@ export interface Transaction {
   tradePair?: string; // Selected random trading pair
   traderAvatar?: string; // Copier custom photo
   orderNumber?: string; // Custom code entered by user
+  deductMain?: number; // Principal deducted from mainBalance
+  deductProfit?: number; // Principal deducted from profitBalance
 }
 
 export interface Trader {

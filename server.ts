@@ -695,6 +695,26 @@ Respond strictly in valid JSON format:
 
   setInterval(async () => {
     try {
+      // 0. Auto-lock active signal if 1-hour validity window has expired
+      try {
+        const signalSnap = await getDoc(doc(db, "system", "copyTradeSignal"));
+        if (signalSnap.exists()) {
+          const sig = signalSnap.data();
+          if (sig.isActive && sig.endTime) {
+            if (Date.now() >= new Date(sig.endTime).getTime()) {
+              console.log(`[Signal Auto-Lock] Signal ${sig.code} expired after 1 hour. Locking signal in Firestore.`);
+              await setDoc(doc(db, "system", "copyTradeSignal"), {
+                isActive: false,
+                isLocked: true,
+                lockedAt: new Date().toISOString()
+              }, { merge: true });
+            }
+          }
+        }
+      } catch (sigErr) {
+        console.warn("[Signal Auto-Lock Check Warning]:", sigErr);
+      }
+
       const now = new Date();
       const currentUtcHours = now.getUTCHours();
       const currentUtcMinutes = now.getUTCMinutes();

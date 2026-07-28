@@ -66,9 +66,13 @@ export default function History({
       }
 
       // Status Filter
-      if (statusFilter === 'Completed' && tx.status !== TransactionStatus.Success) return false;
-      if (statusFilter === 'Pending' && tx.status !== TransactionStatus.Pending && tx.status !== TransactionStatus.Hold) return false;
-      if (statusFilter === 'Failed' && tx.status !== TransactionStatus.Failed) return false;
+      const isTxSuccess = tx.status === TransactionStatus.Success || (tx.status as string) === 'Success';
+      const isTxPending = tx.status === TransactionStatus.Pending || tx.status === TransactionStatus.Hold || (tx.status as string) === 'Pending' || (tx.status as string) === 'Hold';
+      const isTxRejected = tx.status === TransactionStatus.Failed || tx.status === TransactionStatus.Rejected || (tx.status as string) === 'Rejected' || (tx.status as string) === 'Failed';
+
+      if (statusFilter === 'Completed' && !isTxSuccess) return false;
+      if (statusFilter === 'Pending' && !isTxPending) return false;
+      if (statusFilter === 'Failed' && !isTxRejected) return false;
 
       // Search Query
       if (searchQuery.trim() !== '') {
@@ -107,9 +111,9 @@ export default function History({
   // Detail Modal / View
   if (selectedTx) {
     const tx = selectedTx;
-    const isSuccess = tx.status === TransactionStatus.Success;
-    const isPending = tx.status === TransactionStatus.Pending || tx.status === TransactionStatus.Hold;
-    const isFailed = tx.status === TransactionStatus.Failed;
+    const isSuccess = tx.status === TransactionStatus.Success || (tx.status as string) === 'Success';
+    const isPending = tx.status === TransactionStatus.Pending || tx.status === TransactionStatus.Hold || (tx.status as string) === 'Pending' || (tx.status as string) === 'Hold';
+    const isFailed = tx.status === TransactionStatus.Failed || tx.status === TransactionStatus.Rejected || (tx.status as string) === 'Failed' || (tx.status as string) === 'Rejected';
 
     const formattedDate = new Date(tx.timestamp).toLocaleString(undefined, {
       year: 'numeric',
@@ -126,8 +130,8 @@ export default function History({
       statusText = tx.status === TransactionStatus.Hold ? 'Security Review (Hold)' : 'Processing';
       statusBg = 'bg-amber-500/10 text-amber-400 border-amber-500/30';
     } else if (isFailed) {
-      statusText = 'Rejected / Failed';
-      statusBg = 'bg-rose-500/10 text-rose-400 border-rose-500/30';
+      statusText = 'REJECTED';
+      statusBg = 'bg-rose-500/20 text-rose-400 border-rose-500/40 font-bold';
     }
 
     return (
@@ -566,20 +570,20 @@ export default function History({
                     {amtPrefix}{displayAmount} <span className="text-[9px] text-zinc-500 font-bold uppercase">USDT</span>
                   </h4>
                   
-                  {tx.status === TransactionStatus.Success ? (
+                  {tx.status === TransactionStatus.Success || (tx.status as string) === 'Success' ? (
                     <span className="inline-flex items-center gap-1 text-[8px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full font-bold uppercase font-mono">
                       <span className="w-1 h-1 bg-emerald-400 rounded-full" />
                       Success
                     </span>
-                  ) : tx.status === TransactionStatus.Pending || tx.status === TransactionStatus.Hold ? (
+                  ) : tx.status === TransactionStatus.Pending || tx.status === TransactionStatus.Hold || (tx.status as string) === 'Pending' || (tx.status as string) === 'Hold' ? (
                     <span className="inline-flex items-center gap-1 text-[8px] bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-full font-bold uppercase font-mono animate-pulse">
                       <span className="w-1 h-1 bg-amber-400 rounded-full" />
                       Pending
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 text-[8px] bg-rose-500/10 text-rose-400 border border-rose-500/20 px-2 py-0.5 rounded-full font-bold uppercase font-mono">
-                      <span className="w-1 h-1 bg-rose-500 rounded-full" />
-                      Rejected
+                    <span className="inline-flex items-center gap-1 text-[8.5px] bg-rose-500/20 text-rose-400 border border-rose-500/40 px-2.5 py-0.5 rounded-full font-black uppercase font-mono tracking-wider">
+                      <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-pulse" />
+                      REJECTED
                     </span>
                   )}
                 </div>

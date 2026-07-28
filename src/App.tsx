@@ -492,9 +492,12 @@ export default function App() {
           console.warn("Global copy_trades status update failed:", err);
         }
 
+        const returnMain = latestTx.deductMain !== undefined ? latestTx.deductMain : latestTx.amount;
+        const returnProfit = (latestTx.deductProfit !== undefined ? latestTx.deductProfit : 0) + profit;
+
         await updateDoc(doc(db, 'users', currentUser.uid), {
-          mainBalance: increment(latestTx.amount),
-          profitBalance: increment(profit)
+          mainBalance: increment(returnMain),
+          profitBalance: increment(returnProfit)
         });
 
         showToast(`🎉 Copy trade complete! +$${profit.toFixed(2)} USDT profits added to balance.`, 'success');
@@ -1100,6 +1103,22 @@ export default function App() {
     }
 
     try {
+      // Check active signal expiration (1 hour validity limit)
+      if (!adminSignal || !adminSignal.isActive) {
+        showToast('No active signal code is currently broadcasting. Please wait for the official signal.', 'error');
+        return false;
+      }
+
+      if (adminSignal.isLocked || (adminSignal.endTime && Date.now() >= new Date(adminSignal.endTime).getTime())) {
+        showToast('Signal Expired! This order verification code has locked after 1 hour. Please wait for the next signal.', 'error');
+        return false;
+      }
+
+      if (cleanCode !== adminSignal.code.trim().toUpperCase()) {
+        showToast('Invalid signal code. Please enter the current active code shared in the official channel.', 'error');
+        return false;
+      }
+
       // 1. Verify that this specific user has not already used this order/signal code
       const qCode = query(
         collection(db, 'users', currentUser.uid, 'transactions'),
@@ -1137,6 +1156,16 @@ export default function App() {
       const newVolume = currentUser.totalVolume + amount;
       const newTier = getEffectiveTier(newVolume);
 
+      // Deduct amount: first from mainBalance, then remainder from profitBalance
+      let dedMain = 0;
+      let dedProfit = 0;
+      if (currentUser.mainBalance >= amount) {
+        dedMain = amount;
+      } else {
+        dedMain = currentUser.mainBalance;
+        dedProfit = amount - currentUser.mainBalance;
+      }
+
       const txId = 'NGK-CT-' + Math.random().toString(36).substring(2, 9).toUpperCase();
       const endTime = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 minutes!
 
@@ -1152,7 +1181,9 @@ export default function App() {
         requiresApproval: isSecondTrade,
         traderAvatar,
         tradePair,
-        orderNumber: cleanCode
+        orderNumber: cleanCode,
+        deductMain: dedMain,
+        deductProfit: dedProfit
       };
 
       await setDoc(doc(db, 'users', currentUser.uid, 'transactions', txId), copyTradeTx);
@@ -1167,16 +1198,6 @@ export default function App() {
         });
       } catch (err) {
         console.warn("Global copy_trades write failed:", err);
-      }
-
-      // Deduct amount: first from mainBalance, then remainder from profitBalance
-      let dedMain = 0;
-      let dedProfit = 0;
-      if (currentUser.mainBalance >= amount) {
-        dedMain = amount;
-      } else {
-        dedMain = currentUser.mainBalance;
-        dedProfit = amount - currentUser.mainBalance;
       }
 
       await updateDoc(doc(db, 'users', currentUser.uid), {
@@ -1272,9 +1293,12 @@ export default function App() {
         totalReturn
       });
 
+      const returnMain = tx.deductMain !== undefined ? tx.deductMain : tx.amount;
+      const returnProfit = (tx.deductProfit !== undefined ? tx.deductProfit : 0) + profit;
+
       await updateDoc(doc(db, 'users', currentUser.uid), {
-        mainBalance: increment(tx.amount),
-        profitBalance: increment(profit)
+        mainBalance: increment(returnMain),
+        profitBalance: increment(returnProfit)
       });
 
       showToast(`2FA Verified! +$${profit.toFixed(2)} USDT released to your main balance!`, 'success');
@@ -1621,12 +1645,24 @@ export default function App() {
       }
     }
 
-    const withdrawable = currentUser.totalVolume >= 800 
-      ? currentUser.mainBalance + currentUser.profitBalance 
-      : currentUser.profitBalance;
+    // Calculate completed deposit sum and withdrawable limits
+    const completedDeposits = transactions
+      .filter(t => t.type === TransactionType.Deposit && (t.status === TransactionStatus.Success || (t.status as string) === 'Success'))
+      .reduce((sum, t) => sum + t.amount, 0);
 
-    if (amt > withdrawable) {
-      const err = `Insufficient withdrawable balance. Max withdrawable: $${withdrawable.toFixed(2)} USDT. (${currentUser.totalVolume < 800 ? '$800 trade volume needed to unlock deposit' : ''})`;
+    const profitWithdrawable = Math.max(0, currentUser.profitBalance || 0);
+    const depositWithdrawable = (currentUser.totalVolume >= 800 && completedDeposits > 0)
+      ? Math.min(currentUser.mainBalance, completedDeposits)
+      : 0;
+    const maxWithdrawable = profitWithdrawable + depositWithdrawable;
+
+    if (amt > maxWithdrawable) {
+      let err = `Insufficient withdrawable balance. Max withdrawable: $${maxWithdrawable.toFixed(2)} USDT.`;
+      if (completedDeposits === 0 && amt > profitWithdrawable) {
+        err = `Withdrawal rejected! Bonus/Gift funds cannot be withdrawn directly. Only actual deposited funds (after $800 volume) and earned trading profits are withdrawable. Max withdrawable profits: $${profitWithdrawable.toFixed(2)} USDT.`;
+      } else if (currentUser.totalVolume < 800 && amt > profitWithdrawable) {
+        err = `Deposit principal locked until $800 trading volume reached. Bonus funds are non-withdrawable. Max withdrawable profits: $${profitWithdrawable.toFixed(2)} USDT.`;
+      }
       setWithdrawError(err);
       showToast(err, 'error');
       return;
@@ -2592,45 +2628,77 @@ export default function App() {
                 <div className="space-y-4">
                   {/* Account overview available caps */}
                   <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800 space-y-3">
-                    {/* Total Portfolio vs Withdrawable */}
-                    <div className="grid grid-cols-2 gap-2 pb-2.5 border-b border-zinc-900">
-                      <div>
-                        <span className="text-[9px] text-zinc-500 font-bold uppercase font-mono block">Total Net Capital</span>
-                        <span className="text-base font-bold text-white font-mono">
-                          ${(currentUser ? currentUser.mainBalance + currentUser.profitBalance : 0).toFixed(2)} USDT
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-[9px] text-emerald-400/90 font-bold uppercase font-mono block">Withdrawable Now</span>
-                        <span className="text-base font-bold text-emerald-400 font-mono">
-                          ${currentUser ? (currentUser.totalVolume >= 800 ? currentUser.mainBalance + currentUser.profitBalance : currentUser.profitBalance).toFixed(2) : '0.00'} USDT
-                        </span>
-                      </div>
-                    </div>
+                    {(() => {
+                      const depSum = transactions
+                        .filter(t => t.type === TransactionType.Deposit && (t.status === TransactionStatus.Success || (t.status as string) === 'Success'))
+                        .reduce((sum, t) => sum + t.amount, 0);
+                      const pWith = Math.max(0, currentUser?.profitBalance || 0);
+                      const dWith = (currentUser && currentUser.totalVolume >= 800 && depSum > 0)
+                        ? Math.min(currentUser.mainBalance, depSum)
+                        : 0;
+                      const totWith = pWith + dWith;
+                      return (
+                        <>
+                          {/* Total Portfolio vs Withdrawable */}
+                          <div className="grid grid-cols-2 gap-2 pb-2.5 border-b border-zinc-900">
+                            <div>
+                              <span className="text-[9px] text-zinc-500 font-bold uppercase font-mono block">Total Net Capital</span>
+                              <span className="text-base font-bold text-white font-mono">
+                                ${(currentUser ? currentUser.mainBalance + currentUser.profitBalance : 0).toFixed(2)} USDT
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-[9px] text-emerald-400/90 font-bold uppercase font-mono block">Withdrawable Now</span>
+                              <span className="text-base font-bold text-emerald-400 font-mono">
+                                ${totWith.toFixed(2)} USDT
+                              </span>
+                            </div>
+                          </div>
 
-                    {/* Trading Volume Requirement Card */}
-                    <div>
-                      <div className="flex justify-between items-center text-[10px] font-mono font-bold text-zinc-400 mb-1">
-                        <span>Deposit Unlock Volume</span>
-                        <span>${currentUser?.totalVolume.toFixed(0) || 0} / $800 USDT</span>
-                      </div>
-                      <div className="h-1.5 bg-zinc-900 rounded-full overflow-hidden border border-zinc-850">
-                        <div 
-                          className="h-full bg-gradient-to-r from-cyan-500 to-emerald-500 rounded-full transition-all duration-500"
-                          style={{ width: `${Math.min(((currentUser?.totalVolume || 0) / 800) * 100, 100)}%` }}
-                        />
-                      </div>
+                          {/* Detail Breakdown */}
+                          <div className="grid grid-cols-2 gap-1.5 text-[9.5px] font-mono">
+                            <div className="bg-zinc-900/60 p-2 rounded border border-zinc-850">
+                              <span className="text-zinc-500 block text-[8.5px] uppercase">Earned Profits:</span>
+                              <span className="text-emerald-400 font-bold">${pWith.toFixed(2)} USDT</span>
+                            </div>
+                            <div className="bg-zinc-900/60 p-2 rounded border border-zinc-850">
+                              <span className="text-zinc-500 block text-[8.5px] uppercase">Verified Deposit:</span>
+                              <span className={depSum > 0 ? "text-cyan-400 font-bold" : "text-amber-400 font-bold"}>
+                                ${depSum.toFixed(2)} USDT {depSum === 0 ? '(None)' : ''}
+                              </span>
+                            </div>
+                          </div>
 
-                      {currentUser && currentUser.totalVolume < 800 ? (
-                        <div className="mt-2 text-[9.5px] text-amber-400/90 bg-amber-950/20 border border-amber-900/30 p-2 rounded-lg font-mono leading-relaxed">
-                          🔒 Deposit locked until $800 volume (<span className="text-amber-300 font-bold">${(800 - currentUser.totalVolume).toFixed(2)} USDT</span> remaining). Earned profits are withdrawable (min 10 USDT).
-                        </div>
-                      ) : (
-                        <div className="mt-2 text-[9.5px] text-emerald-400 bg-emerald-950/20 border border-emerald-900/30 p-2 rounded-lg font-mono leading-relaxed">
-                          🔓 Full Unlocked! Initial deposit and earned profits are 100% withdrawable.
-                        </div>
-                      )}
-                    </div>
+                          {/* Trading Volume Requirement Card */}
+                          <div>
+                            <div className="flex justify-between items-center text-[10px] font-mono font-bold text-zinc-400 mb-1">
+                              <span>Deposit Unlock Volume</span>
+                              <span>${currentUser?.totalVolume.toFixed(0) || 0} / $800 USDT</span>
+                            </div>
+                            <div className="h-1.5 bg-zinc-900 rounded-full overflow-hidden border border-zinc-850">
+                              <div 
+                                className="h-full bg-gradient-to-r from-cyan-500 to-emerald-500 rounded-full transition-all duration-500"
+                                style={{ width: `${Math.min(((currentUser?.totalVolume || 0) / 800) * 100, 100)}%` }}
+                              />
+                            </div>
+
+                            {currentUser && currentUser.totalVolume < 800 ? (
+                              <div className="mt-2 text-[9.5px] text-amber-400/90 bg-amber-950/20 border border-amber-900/30 p-2 rounded-lg font-mono leading-relaxed">
+                                🔒 Deposit locked until $800 volume (<span className="text-amber-300 font-bold">${(800 - currentUser.totalVolume).toFixed(2)} USDT</span> remaining). Earned profits are withdrawable (min 10 USDT).
+                              </div>
+                            ) : depSum === 0 ? (
+                              <div className="mt-2 text-[9.5px] text-amber-400 bg-amber-950/20 border border-amber-900/30 p-2 rounded-lg font-mono leading-relaxed">
+                                ⚠️ No completed deposit detected on account. Bonus funds are non-withdrawable.
+                              </div>
+                            ) : (
+                              <div className="mt-2 text-[9.5px] text-emerald-400 bg-emerald-950/20 border border-emerald-900/30 p-2 rounded-lg font-mono leading-relaxed">
+                                🔓 Deposit unlocked! Initial deposit and earned profits are 100% withdrawable.
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
 
                   {/* Input Size */}
@@ -2641,8 +2709,14 @@ export default function App() {
                         type="button"
                         onClick={() => {
                           if (!currentUser) return;
-                          const maxVal = currentUser.totalVolume >= 800 ? currentUser.mainBalance + currentUser.profitBalance : currentUser.profitBalance;
-                          setWithdrawAmount(maxVal.toFixed(2));
+                          const depSum = transactions
+                            .filter(t => t.type === TransactionType.Deposit && (t.status === TransactionStatus.Success || (t.status as string) === 'Success'))
+                            .reduce((sum, t) => sum + t.amount, 0);
+                          const pWith = Math.max(0, currentUser.profitBalance || 0);
+                          const dWith = (currentUser.totalVolume >= 800 && depSum > 0)
+                            ? Math.min(currentUser.mainBalance, depSum)
+                            : 0;
+                          setWithdrawAmount((pWith + dWith).toFixed(2));
                         }}
                         className="text-[9px] text-cyan-400 hover:text-cyan-300 font-bold uppercase font-mono bg-cyan-500/10 hover:bg-cyan-500/20 px-1.5 py-0.5 rounded border border-cyan-500/30 transition"
                       >
