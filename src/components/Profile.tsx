@@ -449,9 +449,13 @@ export default function Profile({
   };
 
   const kycStatusDisplay = {
-    not_submitted: { text: 'Not Verified', color: 'text-zinc-500 bg-zinc-950 border-zinc-800' },
-    pending: { text: 'Pending Review', color: 'text-amber-400 bg-amber-500/10 border-amber-500/25' },
-    verified: { text: 'Verified', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/25' }
+    not_submitted: { text: 'Unverified (Withdraw Locked)', color: 'text-rose-400 bg-rose-500/10 border-rose-500/30' },
+    pending: { text: 'Level 1 Pending', color: 'text-amber-400 bg-amber-500/10 border-amber-500/25' },
+    level1_pending: { text: 'Level 1 Pending', color: 'text-amber-400 bg-amber-500/10 border-amber-500/25' },
+    level2_pending: { text: 'Level 2 Pending', color: 'text-amber-400 bg-amber-500/10 border-amber-500/25' },
+    level1_verified: { text: 'Partially Verified (Level 1)', color: 'text-cyan-400 bg-cyan-500/15 border-cyan-500/40' },
+    level2_verified: { text: 'Fully Verified (Level 2)', color: 'text-emerald-400 bg-emerald-500/15 border-emerald-500/40' },
+    verified: { text: 'Fully Verified (Level 2)', color: 'text-emerald-400 bg-emerald-500/15 border-emerald-500/40' }
   };
 
   const kycStatus = user.kycStatus || 'not_submitted';
@@ -502,8 +506,8 @@ export default function Profile({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-sm font-bold text-white truncate">{user.username}</span>
-              {user.kycStatus === 'verified' && (
-                <ShieldCheck size={14} className="text-emerald-400 shrink-0" />
+              {(user.kycStatus === 'level1_verified' || user.kycStatus === 'level2_verified' || user.kycStatus === 'verified') && (
+                <ShieldCheck size={14} className={user.kycStatus === 'level1_verified' ? "text-cyan-400 shrink-0" : "text-emerald-400 shrink-0"} />
               )}
               {user.tier !== VIPRank.Bronze && (
                 <span className="inline-flex items-center gap-0.5 bg-gradient-to-r from-amber-400 to-yellow-500 text-zinc-950 text-[8px] font-extrabold px-1.5 py-0.5 rounded shadow-sm border border-yellow-300/50 uppercase tracking-widest animate-pulse">
@@ -646,11 +650,23 @@ export default function Profile({
             id="kyc-verification-card-btn"
             onClick={() => {
               if (kycStatus === 'not_submitted') {
+                setSelectedKycLevel(1);
                 setKycModalOpen(true);
-              } else if (kycStatus === 'pending') {
-                onShowToast('⏳ Your KYC verification is under review by Customer Support. You will receive a message in Support Chat once approved.', 'info');
-              } else if (kycStatus === 'verified') {
-                onShowToast('✅ Your identity verification is APPROVED! Level 2 VIP status unlocked.', 'success');
+              } else if (kycStatus === 'level1_pending' || kycStatus === 'pending') {
+                onShowToast('⏳ Level 1 Face Verification is under review by Customer Support Desk.', 'info');
+              } else if (kycStatus === 'level1_verified') {
+                onShowToast('✅ Level 1 Verified! Daily withdrawal limit: 1,000 USDT. Select Level 2 to upgrade limit to 50,000 USDT.', 'info');
+                setSelectedKycLevel(2);
+                setKycModalOpen(true);
+              } else if (kycStatus === 'level2_pending') {
+                onShowToast('⏳ Level 2 Advanced Verification is under review by Customer Support Desk.', 'info');
+              } else if (kycStatus === 'level2_verified' || kycStatus === 'verified') {
+                onShowToast('✅ Fully Verified (Level 2)! Maximum 50,000 USDT daily limit active.', 'success');
+                setSelectedKycLevel(2);
+                setKycModalOpen(true);
+              } else {
+                setSelectedKycLevel(1);
+                setKycModalOpen(true);
               }
             }}
             className="p-4 flex items-center justify-between hover:bg-zinc-900/40 cursor-pointer transition duration-150"
@@ -979,37 +995,57 @@ export default function Profile({
               </div>
 
               {/* Tier Selection Buttons */}
-              <div className="grid grid-cols-2 gap-2 mb-4">
+              <div className="grid grid-cols-2 gap-2 mb-3">
                 <button
                   type="button"
                   onClick={() => setSelectedKycLevel(1)}
-                  className={`p-3 rounded-xl border text-left transition relative ${
+                  className={`p-2.5 rounded-xl border text-left transition relative ${
                     selectedKycLevel === 1 
                       ? 'bg-cyan-500/10 border-cyan-500/40 text-white' 
                       : 'bg-zinc-950 border-zinc-850 text-zinc-400 hover:text-white'
                   }`}
                 >
-                  <div className="flex justify-between items-start mb-1">
-                    <span className="text-xs font-bold font-mono text-cyan-400 uppercase">Level 1 Basic</span>
-                    <span className="text-[8px] bg-cyan-500/20 text-cyan-300 px-1.5 py-0.5 rounded font-mono font-bold">1k USDT/day</span>
+                  <div className="flex justify-between items-start mb-0.5">
+                    <span className="text-[11px] font-bold font-mono text-cyan-400 uppercase">Level 1 Basic</span>
+                    <span className="text-[7.5px] bg-cyan-500/20 text-cyan-300 px-1 py-0.5 rounded font-mono font-bold">1k USDT/day</span>
                   </div>
-                  <p className="text-[9px] text-zinc-400 font-mono leading-tight">Face Scan + Name + Phone + Country</p>
+                  <p className="text-[8.5px] text-zinc-400 font-mono leading-tight">Face Scan + Phone</p>
+                  {(kycStatus === 'level1_verified' || kycStatus === 'level2_verified' || kycStatus === 'verified') && (
+                    <span className="mt-1 inline-block text-[7.5px] text-emerald-400 font-bold bg-emerald-500/10 px-1 py-0.5 rounded border border-emerald-500/30">
+                      ✓ Level 1 Verified
+                    </span>
+                  )}
+                  {kycStatus === 'level1_pending' && (
+                    <span className="mt-1 inline-block text-[7.5px] text-amber-400 font-bold bg-amber-500/10 px-1 py-0.5 rounded border border-amber-500/30">
+                      ⏳ Under Review
+                    </span>
+                  )}
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setSelectedKycLevel(2)}
-                  className={`p-3 rounded-xl border text-left transition relative ${
+                  className={`p-2.5 rounded-xl border text-left transition relative ${
                     selectedKycLevel === 2 
                       ? 'bg-emerald-500/10 border-emerald-500/40 text-white' 
                       : 'bg-zinc-950 border-zinc-850 text-zinc-400 hover:text-white'
                   }`}
                 >
-                  <div className="flex justify-between items-start mb-1">
-                    <span className="text-xs font-bold font-mono text-emerald-400 uppercase">Level 2 Advanced</span>
-                    <span className="text-[8px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-mono font-bold">50k USDT/day</span>
+                  <div className="flex justify-between items-start mb-0.5">
+                    <span className="text-[11px] font-bold font-mono text-emerald-400 uppercase">Level 2 Advanced</span>
+                    <span className="text-[7.5px] bg-emerald-500/20 text-emerald-300 px-1 py-0.5 rounded font-mono font-bold">50k USDT/day</span>
                   </div>
-                  <p className="text-[9px] text-zinc-400 font-mono leading-tight">Passport / National ID Scan + Serial #</p>
+                  <p className="text-[8.5px] text-zinc-400 font-mono leading-tight">Passport / ID Scan</p>
+                  {(kycStatus === 'level2_verified' || kycStatus === 'verified') && (
+                    <span className="mt-1 inline-block text-[7.5px] text-emerald-400 font-bold bg-emerald-500/10 px-1 py-0.5 rounded border border-emerald-500/30">
+                      ✓ Level 2 Verified
+                    </span>
+                  )}
+                  {kycStatus === 'level2_pending' && (
+                    <span className="mt-1 inline-block text-[7.5px] text-amber-400 font-bold bg-amber-500/10 px-1 py-0.5 rounded border border-amber-500/30">
+                      ⏳ Under Review
+                    </span>
+                  )}
                 </button>
               </div>
 

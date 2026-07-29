@@ -1639,6 +1639,30 @@ export default function App() {
       return;
     }
 
+    // Strict KYC Verification Enforcement for Withdrawals
+    const kycStatus = currentUser.kycStatus || 'not_submitted';
+    const isLevel1Verified = kycStatus === 'level1_verified';
+    const isLevel2Verified = kycStatus === 'level2_verified' || kycStatus === 'verified' || currentUser.kycLevel === 2;
+    const isKycVerified = isLevel1Verified || isLevel2Verified || currentUser.kycLevel >= 1;
+
+    if (!isKycVerified) {
+      const err = 'KYC Verification Required! You must complete Level 1 Face Verification in your Profile to unlock withdrawals.';
+      setWithdrawError(err);
+      showToast(err, 'error');
+      return;
+    }
+
+    // Daily Limit enforcement based on KYC Tier
+    const dailyLimit = isLevel2Verified ? 50000 : 1000;
+    if (amt > dailyLimit) {
+      const err = isLevel2Verified 
+        ? `Level 2 Daily Limit Exceeded ($50,000 USDT max per day).`
+        : `Level 1 Daily Limit Exceeded ($1,000 USDT max per day). Please upgrade to Level 2 Advanced KYC in Profile to unlock $50,000 USDT/day.`;
+      setWithdrawError(err);
+      showToast(err, 'error');
+      return;
+    }
+
     if (!withdrawAddress || withdrawAddress.trim().length < 5) {
       const err = 'Please enter your valid receiving wallet address.';
       setWithdrawError(err);
