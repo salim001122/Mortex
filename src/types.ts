@@ -26,7 +26,8 @@ export enum TransactionStatus {
   Success = 'Success',
   Failed = 'Failed',
   Hold = 'Hold',
-  Rejected = 'Rejected'
+  Rejected = 'Rejected',
+  Cancelled = 'Cancelled'
 }
 
 export interface User {
@@ -36,7 +37,7 @@ export interface User {
   phone?: string;
   password?: string;
   mainBalance: number;
-  profitBalance: number;
+  profitBalance?: number;
   totalVolume: number;
   totalStaked: number;
   teamVolume: number;
@@ -53,15 +54,17 @@ export interface User {
   twoFactorEnabled: boolean;
   twoFactorSecret: string | null;
   isSupportOnline?: boolean;
-  kycStatus: 'not_submitted' | 'pending' | 'verified';
+  kycStatus: 'not_submitted' | 'pending' | 'level1_pending' | 'level2_pending' | 'level1_verified' | 'level2_verified' | 'verified';
+  kycLevel?: number; // 0 = None, 1 = Basic Face (1,000 USDT/day), 2 = Advanced ID (50,000 USDT/day)
   kycData?: {
-    fullName: string;
-    idNumber: string;
-    nationality: string;
-    documentImage: string;
+    fullName?: string;
+    idNumber?: string;
+    nationality?: string;
+    documentImage?: string;
     backDocumentImage?: string;
+    faceImage?: string;
     phoneNumber?: string;
-    submittedAt: string;
+    submittedAt?: string;
     verifiedAt?: string | null;
     kycLevel?: number;
   };

@@ -1461,27 +1461,38 @@ export default function App() {
   };
 
   // KYC Verification Submission
-  const handleUpdateKYC = async (fullName: string, idNumber: string, nationality: string, documentImage: string, phoneNumber: string, status: 'verified' | 'pending' = 'pending', backDocumentImage?: string) => {
+  const handleUpdateKYC = async (
+    fullName: string, 
+    idNumber: string, 
+    nationality: string, 
+    documentImage: string, 
+    phoneNumber: string, 
+    status: 'verified' | 'pending' | 'level1_pending' | 'level2_pending' | 'level1_verified' | 'level2_verified' = 'pending', 
+    backDocumentImage?: string,
+    faceImage?: string,
+    kycLevel?: number
+  ) => {
     if (!currentUser) return;
     try {
+      const levelNum = kycLevel || (status === 'level1_pending' ? 1 : 2);
       await updateDoc(doc(db, 'users', currentUser.uid), {
         kycStatus: status,
+        kycLevel: levelNum,
         kycData: {
           fullName,
           idNumber,
           nationality,
           documentImage,
           backDocumentImage: backDocumentImage || null,
+          faceImage: faceImage || null,
           phoneNumber,
           submittedAt: new Date().toISOString(),
-          verifiedAt: status === 'verified' ? new Date().toISOString() : null,
-          kycLevel: status === 'verified' ? 2 : 1
+          verifiedAt: (status === 'verified' || status === 'level1_verified' || status === 'level2_verified') ? new Date().toISOString() : null,
+          kycLevel: levelNum
         }
       });
 
-      // Forward submission directly into Customer Support Chat session for Customer Desk Officers
-      const kycSummaryMessage = `📄 [KYC SUBMISSION DETAILS]\n👤 Full Name: ${fullName}\n💳 ID/Passport #: ${idNumber}\n🌍 Nationality: ${nationality}\n📱 Phone #: ${phoneNumber}\n⏳ Status: PENDING CUSTOMER DESK REVIEW`;
-
+      // Update Support Chat session status without exposing raw images/sensitive details to public chat history
       const chatDocRef = doc(db, 'support_chats', currentUser.uid);
       const messagesRef = collection(db, 'support_chats', currentUser.uid, 'messages');
 
@@ -1489,35 +1500,23 @@ export default function App() {
         userId: currentUser.uid,
         username: currentUser.username || fullName || 'Investor',
         userEmail: currentUser.email || '',
-        lastMessage: `📄 New KYC Submission: ${fullName}`,
+        lastMessage: `📄 Level ${levelNum} KYC Verification Submitted (Under Review)`,
         lastTimestamp: new Date().toISOString(),
         status: 'open'
       }, { merge: true });
 
-      // Add main document message with Front ID picture attached
+      // Add a clean, privacy-focused system message in chat
       await addDoc(messagesRef, {
-        sender: 'user',
-        senderName: currentUser.username || fullName,
-        message: kycSummaryMessage,
-        imageUrl: documentImage || null,
+        sender: 'system',
+        senderName: 'System Security',
+        message: `📄 Level ${levelNum} Identity Verification (KYC) submitted!\n\nYour application has been securely transmitted to the Customer Support Desk for manual review. Status: UNDER REVIEW.`,
         timestamp: new Date().toISOString()
       });
 
-      // If Back ID photo exists, attach it as a separate message
-      if (backDocumentImage) {
-        await addDoc(messagesRef, {
-          sender: 'user',
-          senderName: currentUser.username || fullName,
-          message: `📄 [BACK OF ID DOCUMENT SCAN]`,
-          imageUrl: backDocumentImage,
-          timestamp: new Date().toISOString()
-        });
-      }
-
-      if (status === 'verified') {
-        showToast('🎉 Level 2 Identity Verification Approved! $50,000 USDT daily limit unlocked.', 'success');
+      if (status.includes('verified')) {
+        showToast(`🎉 Level ${levelNum} Identity Verification Approved!`, 'success');
       } else {
-        showToast('📄 Identity Verification submitted to Customer Support for review!', 'info');
+        showToast(`📄 Level ${levelNum} Identity Verification submitted to Customer Support for review!`, 'info');
       }
     } catch (err) {
       console.error(err);

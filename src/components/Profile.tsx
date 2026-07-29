@@ -36,7 +36,17 @@ import { Language, getTranslation } from '../translations';
 interface ProfileProps {
   user: User;
   onNavigate: (screen: string) => void;
-  onUpdateKYC: (fullName: string, idNumber: string, nationality: string, documentImage: string, phoneNumber: string, status?: 'verified' | 'pending', backDocumentImage?: string) => void;
+  onUpdateKYC: (
+    fullName: string, 
+    idNumber: string, 
+    nationality: string, 
+    documentImage: string, 
+    phoneNumber: string, 
+    status?: 'verified' | 'pending' | 'level1_pending' | 'level2_pending', 
+    backDocumentImage?: string,
+    faceImage?: string,
+    kycLevel?: number
+  ) => void;
   onUpdate2FA: (secret: string) => void;
   onUpdatePassword: (password: string) => void;
   onLogout: () => void;
@@ -73,6 +83,7 @@ export default function Profile({
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
 
   // KYC Inputs & Fast AI Verification States
+  const [selectedKycLevel, setSelectedKycLevel] = useState<1 | 2>(1);
   const [docType, setDocType] = useState<'passport' | 'national_id' | 'drivers_license'>('passport');
   const [kycName, setKycName] = useState('');
   const [kycId, setKycId] = useState('');
@@ -80,11 +91,13 @@ export default function Profile({
   const [kycPhone, setKycPhone] = useState('');
   const [kycImageBase64, setKycImageBase64] = useState<string | null>(null);
   const [kycBackImageBase64, setKycBackImageBase64] = useState<string | null>(null);
+  const [kycFaceImageBase64, setKycFaceImageBase64] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
   const [scanStepText, setScanStepText] = useState('Initializing AI Scanner...');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const backFileInputRef = useRef<HTMLInputElement>(null);
+  const faceFileInputRef = useRef<HTMLInputElement>(null);
 
   // 2FA Inputs
   const [tempSecret, setTempSecret] = useState('');
@@ -155,50 +168,71 @@ export default function Profile({
     }
   };
 
-  const handleKYCSubmit = async () => {
-    if (!kycName || !kycId || !kycCountry || !kycPhone) {
-      onShowToast('Please fill out all legal details.', 'error');
-      return;
+  const handleFaceFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        if (ev.target?.result) {
+          setKycFaceImageBase64(ev.target.result as string);
+        }
+      };
+      reader.readAsDataURL(file);
     }
+  };
 
-    if (!kycImageBase64) {
-      onShowToast('Please upload a clear photo of your Front ID document.', 'error');
-      return;
+  const handleKYCSubmit = async () => {
+    if (selectedKycLevel === 1) {
+      if (!kycName || !kycCountry || !kycPhone) {
+        onShowToast('Please enter your Full Name, Country, and Phone Number.', 'error');
+        return;
+      }
+      if (!kycFaceImageBase64) {
+        onShowToast('Please upload a clear Face Scan photo for Level 1 Verification.', 'error');
+        return;
+      }
+    } else {
+      if (!kycName || !kycId || !kycCountry || !kycPhone) {
+        onShowToast('Please fill out all legal details including Document Serial #.', 'error');
+        return;
+      }
+      if (!kycImageBase64) {
+        onShowToast('Please upload a clear photo of your Front ID document.', 'error');
+        return;
+      }
     }
     
     // Start fast animated AI Biometric & OCR Document Scan
     setIsScanning(true);
-    setScanProgress(15);
-    setScanStepText('🔍 AI Reading OCR Document & Serial Metadata...');
+    setScanProgress(20);
+    setScanStepText(selectedKycLevel === 1 ? '🧬 Extracting 68 Facial Landmark Vectors...' : '🔍 AI Reading OCR Document & Serial Metadata...');
 
     await new Promise(r => setTimeout(r, 600));
-    setScanProgress(45);
-    setScanStepText('🧬 Extracting 68 Facial Landmark Vectors...');
+    setScanProgress(60);
+    setScanStepText('🛡️ Transmitting Encrypted Payload to Customer Support Desk...');
 
     await new Promise(r => setTimeout(r, 700));
-    setScanProgress(80);
-    setScanStepText('🛡️ Transmitting Encrypted Payload to Customer Desk...');
-
-    await new Promise(r => setTimeout(r, 800));
     setScanProgress(100);
-    setScanStepText('✅ KYC Documents Submitted to Customer Support!');
+    setScanStepText(`✅ Level ${selectedKycLevel} KYC Submitted to Customer Support!`);
 
     await new Promise(r => setTimeout(r, 400));
     
     // Call parent handler to set status as pending and send to support panel
     onUpdateKYC(
       kycName, 
-      kycId, 
+      kycId || 'N/A (Level 1 Face Only)', 
       kycCountry, 
-      kycImageBase64, 
+      kycImageBase64 || '', 
       kycPhone,
-      'pending',
-      kycBackImageBase64 || undefined
+      selectedKycLevel === 1 ? 'level1_pending' : 'level2_pending',
+      kycBackImageBase64 || undefined,
+      kycFaceImageBase64 || undefined,
+      selectedKycLevel
     );
     
     setIsScanning(false);
     setKycModalOpen(false);
-    onShowToast('📄 KYC submitted successfully! Our Customer Support team is reviewing your documents.', 'info');
+    onShowToast(`📄 Level ${selectedKycLevel} KYC submitted! Our Customer Support team is reviewing your details.`, 'info');
   };
 
   const handleOpen2FA = () => {
@@ -506,10 +540,10 @@ export default function Profile({
           <div className="space-y-1">
             <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider font-mono flex items-center gap-1.5">
               <Wallet size={12} className="text-cyan-400" />
-              Accumulated Net Worth
+              Main Balance Portfolio
             </span>
             <span className="text-2xl font-black text-white tracking-tight font-mono block mt-1">
-              ${(user.mainBalance + user.profitBalance + user.totalStaked).toLocaleString(undefined, { minimumFractionDigits: 2 })} <span className="text-xs text-cyan-400 font-bold uppercase">USDT</span>
+              ${(user.mainBalance + user.totalStaked).toLocaleString(undefined, { minimumFractionDigits: 2 })} <span className="text-xs text-cyan-400 font-bold uppercase">USDT</span>
             </span>
           </div>
 
@@ -521,12 +555,12 @@ export default function Profile({
         {/* Detailed asset breakdown */}
         <div className="grid grid-cols-2 gap-3 mt-4 pt-3.5 border-t border-zinc-800/60 text-[10px] font-mono">
           <div className="bg-zinc-950/40 p-2.5 rounded-xl border border-zinc-850/60">
-            <span className="text-zinc-500 block font-bold uppercase text-[8px] tracking-wider">Available Principal</span>
+            <span className="text-zinc-500 block font-bold uppercase text-[8px] tracking-wider">Available Main Balance</span>
             <span className="text-white font-bold block mt-1 text-xs">${user.mainBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} USDT</span>
           </div>
           <div className="bg-zinc-950/40 p-2.5 rounded-xl border border-zinc-850/60">
-            <span className="text-zinc-500 block font-bold uppercase text-[8px] tracking-wider">Yield Earnings</span>
-            <span className="text-emerald-400 font-bold block mt-1 text-xs">+${user.profitBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} USDT</span>
+            <span className="text-zinc-500 block font-bold uppercase text-[8px] tracking-wider">Trading Volume</span>
+            <span className="text-cyan-400 font-bold block mt-1 text-xs">${user.totalVolume.toLocaleString(undefined, { minimumFractionDigits: 2 })} USDT</span>
           </div>
         </div>
       </div>
@@ -928,10 +962,10 @@ export default function Profile({
                   </div>
                   <div>
                     <h3 className="font-bold text-sm text-white font-mono flex items-center gap-1.5">
-                      Level 2 Identity Verification
-                      <span className="text-[9px] bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/20 font-bold uppercase">INSTANT AI</span>
+                      Identity Verification (KYC)
+                      <span className="text-[9px] bg-cyan-500/10 text-cyan-400 px-1.5 py-0.5 rounded border border-cyan-500/20 font-bold uppercase">2 TIERS</span>
                     </h3>
-                    <p className="text-[9px] text-zinc-400 font-mono mt-0.5">Real-Exchange Global Compliance & Anti-Fraud Center</p>
+                    <p className="text-[9px] text-zinc-400 font-mono mt-0.5">Select verification tier to unlock daily withdrawal limits</p>
                   </div>
                 </div>
                 <button 
@@ -944,35 +978,72 @@ export default function Profile({
                 </button>
               </div>
 
-              {/* Document Type Selector */}
-              <div className="space-y-3.5">
-                <div>
-                  <label className="text-[8px] text-zinc-400 font-bold uppercase block tracking-wider font-mono mb-1.5">Select Document Type</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[
-                      { id: 'passport', label: 'Passport', icon: '🛂' },
-                      { id: 'national_id', label: 'National ID', icon: '💳' },
-                      { id: 'drivers_license', label: 'License', icon: '🚘' }
-                    ].map((type) => (
-                      <button
-                        key={type.id}
-                        type="button"
-                        onClick={() => setDocType(type.id as any)}
-                        className={`p-2 rounded-xl border text-center transition flex flex-col items-center justify-center gap-0.5 font-mono ${
-                          docType === type.id
-                            ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-300 font-bold'
-                            : 'bg-zinc-950 border-zinc-850 text-zinc-400 hover:text-white'
-                        }`}
-                      >
-                        <span className="text-base">{type.icon}</span>
-                        <span className="text-[9px] font-bold tracking-tight">{type.label}</span>
-                      </button>
-                    ))}
+              {/* Tier Selection Buttons */}
+              <div className="grid grid-cols-2 gap-2 mb-4">
+                <button
+                  type="button"
+                  onClick={() => setSelectedKycLevel(1)}
+                  className={`p-3 rounded-xl border text-left transition relative ${
+                    selectedKycLevel === 1 
+                      ? 'bg-cyan-500/10 border-cyan-500/40 text-white' 
+                      : 'bg-zinc-950 border-zinc-850 text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <div className="flex justify-between items-start mb-1">
+                    <span className="text-xs font-bold font-mono text-cyan-400 uppercase">Level 1 Basic</span>
+                    <span className="text-[8px] bg-cyan-500/20 text-cyan-300 px-1.5 py-0.5 rounded font-mono font-bold">1k USDT/day</span>
                   </div>
-                </div>
+                  <p className="text-[9px] text-zinc-400 font-mono leading-tight">Face Scan + Name + Phone + Country</p>
+                </button>
 
-                {/* Personal Legal Inputs */}
-                <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedKycLevel(2)}
+                  className={`p-3 rounded-xl border text-left transition relative ${
+                    selectedKycLevel === 2 
+                      ? 'bg-emerald-500/10 border-emerald-500/40 text-white' 
+                      : 'bg-zinc-950 border-zinc-850 text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <div className="flex justify-between items-start mb-1">
+                    <span className="text-xs font-bold font-mono text-emerald-400 uppercase">Level 2 Advanced</span>
+                    <span className="text-[8px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-mono font-bold">50k USDT/day</span>
+                  </div>
+                  <p className="text-[9px] text-zinc-400 font-mono leading-tight">Passport / National ID Scan + Serial #</p>
+                </button>
+              </div>
+
+              {/* KYC Form Content */}
+              <div className="space-y-3.5">
+                {selectedKycLevel === 2 && (
+                  <div>
+                    <label className="text-[8px] text-zinc-400 font-bold uppercase block tracking-wider font-mono mb-1.5">Select Document Type</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { id: 'passport', label: 'Passport', icon: '🛂' },
+                        { id: 'national_id', label: 'National ID', icon: '💳' },
+                        { id: 'drivers_license', label: 'License', icon: '🚘' }
+                      ].map((type) => (
+                        <button
+                          key={type.id}
+                          type="button"
+                          onClick={() => setDocType(type.id as any)}
+                          className={`p-2 rounded-xl border text-center transition flex flex-col items-center justify-center gap-0.5 font-mono ${
+                            docType === type.id
+                              ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-300 font-bold'
+                              : 'bg-zinc-950 border-zinc-850 text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          <span className="text-base">{type.icon}</span>
+                          <span className="text-[9px] font-bold tracking-tight">{type.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Personal Inputs */}
+                <div className={`grid ${selectedKycLevel === 2 ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
                   <div className="space-y-1">
                     <label className="text-[8px] text-zinc-400 font-bold uppercase block tracking-wider font-mono">Full Legal Name</label>
                     <input 
@@ -985,17 +1056,19 @@ export default function Profile({
                     />
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="text-[8px] text-zinc-400 font-bold uppercase block tracking-wider font-mono">Document Serial #</label>
-                    <input 
-                      id="kyc-id-input"
-                      type="text" 
-                      placeholder="A-982149023" 
-                      value={kycId}
-                      onChange={(e) => setKycId(e.target.value)}
-                      className="w-full bg-zinc-950 border border-zinc-850 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500 font-mono"
-                    />
-                  </div>
+                  {selectedKycLevel === 2 && (
+                    <div className="space-y-1">
+                      <label className="text-[8px] text-zinc-400 font-bold uppercase block tracking-wider font-mono">Document Serial #</label>
+                      <input 
+                        id="kyc-id-input"
+                        type="text" 
+                        placeholder="A-982149023" 
+                        value={kycId}
+                        onChange={(e) => setKycId(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-850 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500 font-mono"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
@@ -1030,91 +1103,124 @@ export default function Profile({
                   </div>
                 </div>
 
-                {/* Document Scans (Front & Back) */}
-                <div className="grid grid-cols-2 gap-2">
+                {/* Level 1: Face Scan Upload Card */}
+                {selectedKycLevel === 1 && (
                   <div className="space-y-1">
-                    <label className="text-[8px] text-zinc-400 font-bold uppercase block tracking-wider font-mono">Document Front</label>
+                    <label className="text-[8px] text-cyan-400 font-bold uppercase block tracking-wider font-mono">Face Verification Selfie Photo</label>
                     <div 
-                      onClick={() => fileInputRef.current?.click()}
-                      className="border border-dashed border-zinc-800 hover:border-cyan-500/50 bg-zinc-950/80 rounded-xl p-2.5 flex flex-col items-center justify-center cursor-pointer transition text-center relative overflow-hidden h-20"
+                      onClick={() => faceFileInputRef.current?.click()}
+                      className="border border-dashed border-cyan-500/40 hover:border-cyan-400 bg-cyan-950/20 rounded-xl p-3 flex flex-col items-center justify-center cursor-pointer transition text-center relative overflow-hidden h-24"
                     >
-                      {kycImageBase64 ? (
-                        <img src={kycImageBase64} alt="Front ID" className="w-full h-full object-cover rounded-lg" />
+                      {kycFaceImageBase64 ? (
+                        <img src={kycFaceImageBase64} alt="Face Photo" className="w-full h-full object-cover rounded-lg" />
                       ) : (
                         <>
-                          <UploadCloud size={18} className="text-cyan-400 mb-1" />
-                          <span className="text-[9px] font-bold text-zinc-300 font-mono">Front Scan</span>
-                          <span className="text-[7px] text-zinc-500 font-mono">Click to Upload</span>
+                          <Fingerprint size={24} className="text-cyan-400 mb-1" />
+                          <span className="text-[10px] font-bold text-cyan-300 font-mono">Upload Face Scan Selfie</span>
+                          <span className="text-[8px] text-zinc-500 font-mono">Clear face photo for Level 1 compliance</span>
                         </>
                       )}
                       <input 
                         type="file" 
-                        ref={fileInputRef}
-                        onChange={handleFileChange}
+                        ref={faceFileInputRef}
+                        onChange={handleFaceFileChange}
                         accept="image/*"
                         className="hidden"
                       />
                     </div>
                   </div>
+                )}
 
-                  <div className="space-y-1">
-                    <label className="text-[8px] text-zinc-400 font-bold uppercase block tracking-wider font-mono">Document Back</label>
-                    <div 
-                      onClick={() => backFileInputRef.current?.click()}
-                      className="border border-dashed border-zinc-800 hover:border-cyan-500/50 bg-zinc-950/80 rounded-xl p-2.5 flex flex-col items-center justify-center cursor-pointer transition text-center relative overflow-hidden h-20"
-                    >
-                      {kycBackImageBase64 ? (
-                        <img src={kycBackImageBase64} alt="Back ID" className="w-full h-full object-cover rounded-lg" />
-                      ) : (
-                        <>
-                          <UploadCloud size={18} className="text-cyan-400 mb-1" />
-                          <span className="text-[9px] font-bold text-zinc-300 font-mono">Back Scan</span>
-                          <span className="text-[7px] text-zinc-500 font-mono">Click to Upload</span>
-                        </>
-                      )}
-                      <input 
-                        type="file" 
-                        ref={backFileInputRef}
-                        onChange={handleBackFileChange}
-                        accept="image/*"
-                        className="hidden"
-                      />
+                {/* Level 2: ID Document Scans (Front & Back) */}
+                {selectedKycLevel === 2 && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <label className="text-[8px] text-zinc-400 font-bold uppercase block tracking-wider font-mono">Document Front</label>
+                      <div 
+                        onClick={() => fileInputRef.current?.click()}
+                        className="border border-dashed border-zinc-800 hover:border-cyan-500/50 bg-zinc-950/80 rounded-xl p-2.5 flex flex-col items-center justify-center cursor-pointer transition text-center relative overflow-hidden h-20"
+                      >
+                        {kycImageBase64 ? (
+                          <img src={kycImageBase64} alt="Front ID" className="w-full h-full object-cover rounded-lg" />
+                        ) : (
+                          <>
+                            <UploadCloud size={18} className="text-cyan-400 mb-1" />
+                            <span className="text-[9px] font-bold text-zinc-300 font-mono">Front Scan</span>
+                            <span className="text-[7px] text-zinc-500 font-mono">Click to Upload</span>
+                          </>
+                        )}
+                        <input 
+                          type="file" 
+                          ref={fileInputRef}
+                          onChange={handleFileChange}
+                          accept="image/*"
+                          className="hidden"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[8px] text-zinc-400 font-bold uppercase block tracking-wider font-mono">Document Back</label>
+                      <div 
+                        onClick={() => backFileInputRef.current?.click()}
+                        className="border border-dashed border-zinc-800 hover:border-cyan-500/50 bg-zinc-950/80 rounded-xl p-2.5 flex flex-col items-center justify-center cursor-pointer transition text-center relative overflow-hidden h-20"
+                      >
+                        {kycBackImageBase64 ? (
+                          <img src={kycBackImageBase64} alt="Back ID" className="w-full h-full object-cover rounded-lg" />
+                        ) : (
+                          <>
+                            <UploadCloud size={18} className="text-cyan-400 mb-1" />
+                            <span className="text-[9px] font-bold text-zinc-300 font-mono">Back Scan</span>
+                            <span className="text-[7px] text-zinc-500 font-mono">Click to Upload</span>
+                          </>
+                        )}
+                        <input 
+                          type="file" 
+                          ref={backFileInputRef}
+                          onChange={handleBackFileChange}
+                          accept="image/*"
+                          className="hidden"
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
                 {/* AI Facial Biometrics Simulation Viewport */}
                 <div className="bg-zinc-950 border border-zinc-850 rounded-xl p-3 space-y-2.5 text-center relative overflow-hidden">
                   <div className="flex items-center justify-between text-[9px] font-mono text-zinc-400 border-b border-zinc-900 pb-1.5">
                     <span className="flex items-center gap-1 font-bold text-cyan-400">
                       <Fingerprint size={12} />
-                      AI Facial Liveness Oval
+                      AI Biometric Oval Scanner
                     </span>
-                    <span className="text-emerald-400 font-bold">68 Landmark Mesh</span>
+                    <span className="text-emerald-400 font-bold">Encrypted Desk Link</span>
                   </div>
 
                   {/* Oval Frame Viewport */}
-                  <div className="relative w-28 h-28 mx-auto rounded-full border-2 border-dashed border-cyan-500/50 flex items-center justify-center bg-zinc-900/60 overflow-hidden shadow-inner">
+                  <div className="relative w-24 h-24 mx-auto rounded-full border-2 border-dashed border-cyan-500/50 flex items-center justify-center bg-zinc-900/60 overflow-hidden shadow-inner">
                     {/* Animated Scanning Beam */}
                     {isScanning && (
                       <motion.div 
-                        animate={{ y: [-50, 50, -50] }}
+                        animate={{ y: [-40, 40, -40] }}
                         transition={{ repeat: Infinity, duration: 1.2, ease: "easeInOut" }}
                         className="absolute inset-x-0 h-1 bg-cyan-400 shadow-[0_0_12px_#06b6d4] z-10"
                       />
                     )}
 
-                    {/* Face landmark graphics */}
-                    <div className="opacity-40 flex flex-col items-center">
-                      <div className="w-12 h-14 rounded-full border border-cyan-400/60 flex flex-col items-center justify-center gap-1 p-1">
-                        <div className="flex gap-2">
-                          <div className="w-2 h-2 rounded-full bg-cyan-400"></div>
-                          <div className="w-2 h-2 rounded-full bg-cyan-400"></div>
+                    {kycFaceImageBase64 ? (
+                      <img src={kycFaceImageBase64} alt="Face" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="opacity-40 flex flex-col items-center">
+                        <div className="w-10 h-12 rounded-full border border-cyan-400/60 flex flex-col items-center justify-center gap-1 p-1">
+                          <div className="flex gap-1.5">
+                            <div className="w-1.5 h-1.5 rounded-full bg-cyan-400"></div>
+                            <div className="w-1.5 h-1.5 rounded-full bg-cyan-400"></div>
+                          </div>
+                          <div className="w-1 h-2 bg-cyan-400/60 rounded"></div>
+                          <div className="w-3 h-0.5 bg-cyan-400/60 rounded-full"></div>
                         </div>
-                        <div className="w-1.5 h-3 bg-cyan-400/60 rounded"></div>
-                        <div className="w-4 h-1 bg-cyan-400/60 rounded-full"></div>
                       </div>
-                    </div>
+                    )}
 
                     {/* Status badge on face */}
                     <div className="absolute bottom-1 bg-zinc-950/90 text-cyan-400 text-[7px] font-mono font-bold px-1.5 py-0.5 rounded border border-cyan-500/30 uppercase">

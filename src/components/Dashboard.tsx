@@ -161,13 +161,13 @@ export default function Dashboard({
         <div className="flex justify-between items-start relative z-10 mb-4 pb-4 border-b border-zinc-850/60">
           <div>
             <p className="text-zinc-500 text-[10px] uppercase font-black tracking-widest flex items-center gap-1.5 font-mono">
-              Net Capital Portfolio
+              Main Balance Portfolio
               <img src="https://assets.coingecko.com/coins/images/325/large/Tether.png" alt="usdt" className="w-4 h-4 rounded-full shadow" />
             </p>
             
             <div className="flex items-center gap-2 mt-1">
               <span className="text-3xl font-mono font-black text-white tracking-tight">
-                {formatBalance(user.mainBalance + user.profitBalance + activeCopyAmount)}
+                {formatBalance(user.mainBalance + activeCopyAmount)}
               </span>
               <button 
                 onClick={() => setBalanceVisible(!balanceVisible)} 
@@ -178,24 +178,24 @@ export default function Dashboard({
             </div>
             
             <p className="text-[9px] text-zinc-500 font-mono mt-1">
-              Main Deposit (${user.mainBalance.toFixed(2)}) + Earned Profit (${user.profitBalance.toFixed(2)})
+              Available Main Balance (${user.mainBalance.toFixed(2)})
               {activeCopyAmount > 0 && ` + Active Trade ($${activeCopyAmount.toFixed(2)})`}
             </p>
           </div>
 
           <span className="bg-cyan-500/10 text-cyan-400 border border-cyan-500/25 text-[9px] font-bold px-2.5 py-1 rounded-lg tracking-wider font-mono uppercase flex items-center gap-1.5 shadow-xs">
             <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-pulse" />
-            Secure System Active
+            System Active
           </span>
         </div>
 
-        {/* Breakdown of balances with premium containers and icons */}
+        {/* Breakdown of balances */}
         <div className="grid grid-cols-2 gap-3 relative z-10">
           {/* Main Balance */}
           <div className="bg-zinc-950/40 p-3 rounded-xl border border-zinc-850/60 shadow-inner flex flex-col justify-between">
             <div className="flex items-center gap-1.5 text-[9px] text-zinc-500 font-bold uppercase tracking-wider font-mono">
               <Wallet size={11} className="text-cyan-400" />
-              <span>Main Deposit</span>
+              <span>Main Balance</span>
             </div>
             <p className="text-sm font-black font-mono text-white mt-1.5">
               {balanceVisible ? `$${user.mainBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '••••••'}
@@ -203,15 +203,15 @@ export default function Dashboard({
             </p>
           </div>
 
-          {/* Profit Balance */}
-          <div className="bg-emerald-950/5 p-3 rounded-xl border border-emerald-900/10 shadow-inner flex flex-col justify-between">
-            <div className="flex items-center gap-1.5 text-[9px] text-emerald-500/80 font-bold uppercase tracking-wider font-mono">
-              <TrendingUp size={11} className="text-emerald-400" />
-              <span>Earned Profits</span>
+          {/* Trading Volume */}
+          <div className="bg-cyan-950/20 p-3 rounded-xl border border-cyan-900/30 shadow-inner flex flex-col justify-between">
+            <div className="flex items-center gap-1.5 text-[9px] text-cyan-400 font-bold uppercase tracking-wider font-mono">
+              <TrendingUp size={11} className="text-cyan-400" />
+              <span>Trading Volume</span>
             </div>
-            <p className="text-sm font-black font-mono text-emerald-400 mt-1.5">
-              {balanceVisible ? `+$${user.profitBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '••••••'}
-              <span className="text-[9px] text-emerald-600 font-normal ml-1">USDT</span>
+            <p className="text-sm font-black font-mono text-cyan-300 mt-1.5">
+              {balanceVisible ? `$${user.totalVolume.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '••••••'}
+              <span className="text-[9px] text-cyan-500 font-normal ml-1">USDT</span>
             </p>
           </div>
         </div>
@@ -304,14 +304,14 @@ export default function Dashboard({
 
         <div className="coding-card rounded-xl p-4 flex flex-col justify-between">
           <div>
-            <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-wider">My Profits</p>
+            <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-wider">Main Balance</p>
             <p className="font-mono font-bold text-lg text-emerald-400 mt-1">
-              {formatBalance(user.profitBalance)}
+              {formatBalance(user.mainBalance)}
             </p>
           </div>
           <div className="mt-2.5 flex items-center gap-1 text-[10px] text-emerald-400 bg-emerald-950/40 px-2 py-1 rounded border border-emerald-900/30">
-            <TrendingUp size={10} />
-            <span>Earned Profits</span>
+            <Wallet size={10} />
+            <span>Available Balance</span>
           </div>
         </div>
 

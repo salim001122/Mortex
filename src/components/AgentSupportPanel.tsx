@@ -296,14 +296,20 @@ export default function AgentSupportPanel({ onNavigate, showToast }: AgentSuppor
   const handleApproveKYC = async () => {
     if (!selectedChat || !loggedAgent) return;
     try {
+      const isLevel1 = selectedUserDoc?.kycStatus === 'level1_pending' || selectedUserDoc?.kycData?.kycLevel === 1;
+      const finalStatus = isLevel1 ? 'level1_verified' : 'level2_verified';
+      const levelNum = isLevel1 ? 1 : 2;
+      const limitText = isLevel1 ? '$1,000 USDT' : '$50,000 USDT';
+
       await updateDoc(doc(db, 'users', selectedChat.id), {
-        kycStatus: 'verified',
+        kycStatus: finalStatus,
+        kycLevel: levelNum,
         'kycData.verifiedAt': new Date().toISOString(),
-        'kycData.kycLevel': 2
+        'kycData.kycLevel': levelNum
       });
 
       const fullName = selectedUserDoc?.kycData?.fullName || selectedChat.username || 'Investor';
-      const approvalMsg = `✅ IDENTITY VERIFICATION APPROVED!\n\nDear ${fullName}, your Level 2 Identity Verification (KYC) has been officially reviewed and APPROVED by Customer Support Agent ${loggedAgent.name}.\n\n• Verified Status: Level 2 VIP Active\n• Daily Withdrawal Limit: $50,000 USDT Unlocked`;
+      const approvalMsg = `✅ IDENTITY VERIFICATION APPROVED!\n\nDear ${fullName}, your Level ${levelNum} Identity Verification (KYC) has been officially reviewed and APPROVED by Customer Support Agent ${loggedAgent.name}.\n\n• Verified Status: Level ${levelNum} Active\n• Daily Withdrawal Limit: ${limitText} Unlocked`;
 
       await addDoc(collection(db, 'support_chats', selectedChat.id, 'messages'), {
         sender: 'agent',
@@ -314,12 +320,12 @@ export default function AgentSupportPanel({ onNavigate, showToast }: AgentSuppor
       });
 
       await updateDoc(doc(db, 'support_chats', selectedChat.id), {
-        lastMessage: '✅ KYC Verification Approved',
+        lastMessage: `✅ Level ${levelNum} KYC Approved`,
         lastTimestamp: new Date().toISOString()
       });
 
       playOutgoingSound();
-      showToast(`✅ KYC Approved for ${selectedChat.username}!`, 'success');
+      showToast(`✅ Level ${levelNum} KYC Approved for ${selectedChat.username}!`, 'success');
     } catch (err) {
       console.error("Error approving KYC:", err);
       showToast('Failed to approve KYC.', 'error');
@@ -554,13 +560,13 @@ export default function AgentSupportPanel({ onNavigate, showToast }: AgentSuppor
 
                   <div className="flex items-center gap-2">
                     {/* User KYC Status Badge */}
-                    {selectedUserDoc?.kycStatus === 'pending' ? (
+                    {selectedUserDoc?.kycStatus && selectedUserDoc.kycStatus.includes('pending') ? (
                       <span className="text-[8px] font-black uppercase font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/40 animate-pulse flex items-center gap-1">
-                        <ShieldCheck size={10} /> KYC Pending
+                        <ShieldCheck size={10} /> KYC Pending ({selectedUserDoc.kycStatus === 'level1_pending' ? 'Level 1' : 'Level 2'})
                       </span>
-                    ) : selectedUserDoc?.kycStatus === 'verified' ? (
+                    ) : selectedUserDoc?.kycStatus && selectedUserDoc.kycStatus.includes('verified') ? (
                       <span className="text-[8px] font-black uppercase font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center gap-1">
-                        <CheckCircle2 size={10} /> KYC Verified
+                        <CheckCircle2 size={10} /> {selectedUserDoc.kycStatus === 'level1_verified' ? 'Level 1 Verified' : 'Level 2 Verified'}
                       </span>
                     ) : (
                       <span className="text-[8px] font-bold uppercase font-mono px-2 py-0.5 rounded border border-zinc-800 text-zinc-500">
@@ -575,7 +581,7 @@ export default function AgentSupportPanel({ onNavigate, showToast }: AgentSuppor
                 </div>
 
                 {/* KYC Review Request Box for Support Officers */}
-                {selectedUserDoc?.kycStatus === 'pending' && selectedUserDoc?.kycData && (
+                {selectedUserDoc?.kycStatus && selectedUserDoc.kycStatus.includes('pending') && selectedUserDoc?.kycData && (
                   <div className="m-2.5 p-3.5 bg-gradient-to-r from-amber-950/40 via-zinc-900 to-zinc-950 border border-amber-500/40 rounded-xl space-y-3 shrink-0 shadow-lg relative overflow-hidden">
                     <div className="flex items-center justify-between border-b border-amber-500/20 pb-2">
                       <div className="flex items-center gap-2">
@@ -584,7 +590,7 @@ export default function AgentSupportPanel({ onNavigate, showToast }: AgentSuppor
                         </div>
                         <div>
                           <h4 className="text-[11px] font-black text-amber-300 font-mono uppercase tracking-wide">
-                            📄 KYC Verification Review Request
+                            📄 KYC Verification Review Request ({selectedUserDoc.kycStatus === 'level1_pending' ? 'Level 1 Basic' : 'Level 2 Advanced'})
                           </h4>
                           <p className="text-[8px] text-zinc-400 font-mono">User UID: {selectedChat.id}</p>
                         </div>
@@ -616,12 +622,28 @@ export default function AgentSupportPanel({ onNavigate, showToast }: AgentSuppor
                       </div>
                     </div>
 
-                    {/* Document Thumbnails */}
+                    {/* Document & Face Selfie Thumbnails */}
                     <div className="space-y-1">
                       <span className="text-[8px] text-zinc-400 font-bold font-mono uppercase tracking-wider block">
-                        Uploaded Documents (Click image to expand):
+                        Uploaded Documents & Verification Scans (Click image to expand):
                       </span>
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 flex-wrap">
+                        {selectedUserDoc.kycData.faceImage && (
+                          <div 
+                            onClick={() => setPreviewImage(selectedUserDoc.kycData.faceImage!)}
+                            className="relative group cursor-pointer border border-cyan-500/50 hover:border-cyan-400 rounded-lg overflow-hidden bg-zinc-950 transition"
+                          >
+                            <img 
+                              src={selectedUserDoc.kycData.faceImage} 
+                              alt="Face Selfie" 
+                              className="w-20 h-14 object-cover"
+                            />
+                            <div className="absolute inset-0 bg-black/40 group-hover:bg-black/10 flex items-center justify-center text-white text-[8px] font-mono font-bold transition">
+                              <span>Face Selfie</span>
+                            </div>
+                          </div>
+                        )}
+
                         {selectedUserDoc.kycData.documentImage && (
                           <div 
                             onClick={() => setPreviewImage(selectedUserDoc.kycData.documentImage)}
