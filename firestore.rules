@@ -16,5 +16,8 @@ service cloud.firestore {
     match /system/{document=**} {
       allow read, write: if true;
     }
+    match /support_chats/{document=**} {
+      allow read, write: if true;
+    }
   }
 }
