@@ -281,7 +281,7 @@ export default function App() {
     };
   }, [currentScreen]);
 
-  // Pre-seed user's Telegram Bot Token
+  // Pre-seed user's Telegram Bot Token & Auto-Poster config
   useEffect(() => {
     const seedTelegramConfig = async () => {
       try {
@@ -290,9 +290,11 @@ export default function App() {
         if (!snap.exists() || snap.data()?.botToken !== '8804534060:AAEANG4unWyHUPL-eAtFHk0k2i84VuAPbzo') {
           await setDoc(docRef, {
             botToken: '8804534060:AAEANG4unWyHUPL-eAtFHk0k2i84VuAPbzo',
+            autoPosterActive: true,
+            autoPosterInterval: 1,
             updatedAt: new Date().toISOString()
           }, { merge: true });
-          console.log("Pre-seeded user's Telegram Bot Token successfully.");
+          console.log("Pre-seeded user's Telegram Bot Token and Auto-Poster config successfully.");
         }
       } catch (err) {
         console.error("Error seeding Telegram bot config:", err);
@@ -616,16 +618,18 @@ export default function App() {
   // Simulated chats interval to generate lively discussions inside the Community Chat window
   useEffect(() => {
     const chatTicker = setInterval(async () => {
-      if (!currentUser || currentScreen !== 'community') return;
+      if (!currentUser) return;
 
-      const mockTraders = ['Express Trader', 'CryptoWhale', 'Satoshi_AI', 'Alpha Signals', 'ProfitPulse', 'WhaleWatcher'];
+      const mockTraders = ['Express Trader', 'CryptoWhale', 'Satoshi_AI', 'Alpha Signals', 'ProfitPulse', 'WhaleWatcher', 'VIP_NodeTrader', 'UK_Node_Master'];
       const mockTalks = [
         'Bitcoin is holding solid above 90k, copy trades are highly accurate today!',
         'Just claimed daily bonus streak multipliers. Streak 5 lets go 🔥',
         'Staked another 500 USDT into the AI quantitative pool. Free yields!',
         'Withdrawal of 45 USDT completed in 3 seconds. NGK does not play!',
         'Invite links are yielding massive commissions. Level 1 referral unlocked me 25 USDT reward.',
-        'Anyone mirroring Satoshi_AI master profile? Win rate is crazy!'
+        'Anyone mirroring Satoshi_AI master profile? Win rate is crazy!',
+        'New VIP node signal is active! Enter code to lock in +2.0% profit session!',
+        'KYC verified successfully in 2 minutes! Withdrawal channel unlocked! 🚀'
       ];
 
       const rTrader = mockTraders[Math.floor(Math.random() * mockTraders.length)];
@@ -643,10 +647,10 @@ export default function App() {
         console.error(err);
       }
 
-    }, 24000); // Periodically post chats
+    }, 18000); // Periodically post chats every 18 seconds
 
     return () => clearInterval(chatTicker);
-  }, [currentUser, currentScreen]);
+  }, [currentUser]);
 
   // 4. Handle Registration & Authentications
   const handleSignUp = async () => {

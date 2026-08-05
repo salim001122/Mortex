@@ -5,19 +5,10 @@ import { initializeApp } from "firebase/app";
 import { getFirestore, doc, getDoc, setDoc, collection, addDoc, updateDoc } from "firebase/firestore";
 import { GoogleGenAI, Type } from "@google/genai";
 
-// Initialize Firebase App for server-side persistence checks
-const firebaseConfig = {
-  apiKey: "AIzaSyCBm82z4pEmEerJBBRw2_B45AmWRLJRUn0",
-  authDomain: "njk-exchange.firebaseapp.com",
-  projectId: "njk-exchange",
-  storageBucket: "njk-exchange.firebasestorage.app",
-  messagingSenderId: "322844344895",
-  appId: "1:322844344895:web:47435325a4c13ecd99ee8a",
-  measurementId: "G-XVL46K5YP2"
-};
+import firebaseConfig from "./firebase-applet-config.json";
 
 const firebaseApp = initializeApp(firebaseConfig);
-const db = getFirestore(firebaseApp);
+const db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
 
 // Highly polished, educational, and marketing-focused templates provided by user across multiple languages
 const TELEGRAM_TEMPLATES = [
@@ -210,16 +201,18 @@ async function triggerSignalCodeBroadcast(
   customDirection?: string,
   customCode?: string
 ) {
-  // 1. Fetch Telegram Config
-  const snap = await getDoc(doc(db, "system", "telegram_config"));
-  if (!snap.exists()) {
-    throw new Error("Telegram configuration does not exist in Firestore.");
-  }
-  const config = snap.data();
-  const botToken = config.botToken || "";
-  const channelId = config.channelId || "";
-  if (!botToken || !channelId) {
-    throw new Error("Missing botToken or channelId configuration.");
+  // 1. Fetch Telegram Config (Optional for Telegram posting, but signal is always created)
+  let botToken = "";
+  let channelId = "";
+  try {
+    const snap = await getDoc(doc(db, "system", "telegram_config"));
+    if (snap.exists()) {
+      const config = snap.data();
+      botToken = config.botToken || "";
+      channelId = config.channelId || "";
+    }
+  } catch (err) {
+    console.warn("[Signal Broadcast Config Warning]:", err);
   }
 
   // 2. Select details & generate fresh unique code if not passed
@@ -245,7 +238,7 @@ async function triggerSignalCodeBroadcast(
     titleLabel = "TEST SIGNAL (Random Test)";
   }
 
-  // 3. Save Active Signal document in system/copyTradeSignal
+  // 3. Save Active Signal document in system/copyTradeSignal FIRST (Guaranteed)
   const signalId = "SIG-" + Math.random().toString(36).substring(2, 7).toUpperCase();
   const signalData = {
     id: signalId,
@@ -256,68 +249,64 @@ async function triggerSignalCodeBroadcast(
     startTime: startTime.toISOString(),
     endTime: endTime.toISOString(),
     isActive: true,
+    isLocked: false,
     timestamp: startTime.toISOString()
   };
   await setDoc(doc(db, "system", "copyTradeSignal"), signalData);
+  console.log(`[Signal Engine] Successfully generated & activated VIP Signal ${code} (${pair} ${direction})`);
 
-  // 4. Format Beautiful HTML Telegram Post
-  const directionEmoji = direction === "BULLISH" ? "🟢 BULLISH (BUY / CALL)" : "🔴 BEARISH (SELL / PUT)";
+  // 4. If Telegram Bot Token and Channel ID are configured, post to Telegram
+  let telegramData = null;
+  if (botToken && channelId) {
+    try {
+      const directionEmoji = direction === "BULLISH" ? "🟢 BULLISH (BUY / CALL)" : "🔴 BEARISH (SELL / PUT)";
 
-  const messageText = 
-    `📊 <b>NGK CRYPTOGRAPHIC COPY-TRADING PLATFORM</b> 📊\n` +
-    `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-    `🌐 <b>OFFICIAL BLOCKCHAIN NODE SIGNAL BROADCAST</b>\n` +
-    `━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
-    `🔔 <b>NEW VIP COPY-TRADE SIGNAL DETECTED!</b> 🚀\n` +
-    `We have successfully synchronized with the UK high-frequency nodes.\n\n` +
-    `📈 <b>Session:</b> <code>${titleLabel}</code>\n` +
-    `🎯 <b>Asset Pair:</b> <code>${pair}</code>\n` +
-    `📉 <b>Market Bias:</b> <code>${directionEmoji}</code>\n` +
-    `🔑 <b>Verification Order Code:</b> <code>${code}</code>\n\n` +
-    `⏱️ <b>SESSION WINDOW:</b> <b>1 Hour Only</b>\n` +
-    `🕒 <b>Status:</b> ACTIVE (Expires in 60 minutes)\n\n` +
-    `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-    `💡 <b>HOW TO DEPLOY LICENSE:</b>\n` +
-    `1️⃣ Open the <b>NGK Copy-Trading Panel</b>.\n` +
-    `2️⃣ Enter the <b>Verification Order Code</b> shown above.\n` +
-    `3️⃣ Authorize deployment. Settle and claim <b>+2% profit</b> in 30 minutes!\n\n` +
-    `⚠️ <i>Each signal code is valid for exactly 1 hour. Unauthorized usage or execution after the window is automatically rejected by the ledger network.</i>\n\n` +
-    `🔗 <b>Secure Dashboard:</b> https://ngkexchange.site/?ref=GTX-PJJM7`;
+      const messageText = 
+        `📊 <b>NGK CRYPTOGRAPHIC COPY-TRADING PLATFORM</b> 📊\n` +
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+        `🌐 <b>OFFICIAL BLOCKCHAIN NODE SIGNAL BROADCAST</b>\n` +
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+        `🔔 <b>NEW VIP COPY-TRADE SIGNAL DETECTED!</b> 🚀\n` +
+        `We have successfully synchronized with the UK high-frequency nodes.\n\n` +
+        `📈 <b>Session:</b> <code>${titleLabel}</code>\n` +
+        `🎯 <b>Asset Pair:</b> <code>${pair}</code>\n` +
+        `📉 <b>Market Bias:</b> <code>${directionEmoji}</code>\n` +
+        `🔑 <b>Verification Order Code:</b> <code>${code}</code>\n\n` +
+        `⏱️ <b>SESSION WINDOW:</b> <b>1 Hour Only</b>\n` +
+        `🕒 <b>Status:</b> ACTIVE (Expires in 60 minutes)\n\n` +
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+        `💡 <b>HOW TO DEPLOY LICENSE:</b>\n` +
+        `1️⃣ Open the <b>NGK Copy-Trading Panel</b>.\n` +
+        `2️⃣ Enter the <b>Verification Order Code</b> shown above.\n` +
+        `3️⃣ Authorize deployment. Settle and claim <b>+2% profit</b> in 30 minutes!\n\n` +
+        `⚠️ <i>Each signal code is valid for exactly 1 hour. Unauthorized usage or execution after the window is automatically rejected by the ledger network.</i>\n\n` +
+        `🔗 <b>Secure Dashboard:</b> https://ngkexchange.site/?ref=GTX-PJJM7`;
 
-  // 5. Post to Telegram with a beautiful holographic card banner
-  const cleanedChatId = cleanChannelId(channelId);
-  const bannerUrl = "https://images.unsplash.com/photo-1640340434855-6084b1f4901c?q=80&w=1200";
-  const telegramUrl = `https://api.telegram.org/bot${botToken}/sendPhoto`;
-  
-  const response = await fetch(telegramUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: cleanedChatId,
-      photo: bannerUrl,
-      caption: messageText,
-      parse_mode: "HTML",
-    }),
-  });
+      const cleanedChatId = cleanChannelId(channelId);
+      const bannerUrl = "https://images.unsplash.com/photo-1640340434855-6084b1f4901c?q=80&w=1200";
+      const telegramUrl = `https://api.telegram.org/bot${botToken}/sendPhoto`;
+      
+      const response = await fetch(telegramUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: cleanedChatId,
+          photo: bannerUrl,
+          caption: messageText,
+          parse_mode: "HTML",
+        }),
+      });
 
-  const data = await response.json();
-  if (!response.ok || !data.ok) {
-    let errDesc = data.description || "Failed to post message to Telegram channel.";
-    if (
-      errDesc.includes("PEER_ID_INVALID") ||
-      errDesc.includes("chat not found") ||
-      errDesc.includes("not a member") ||
-      errDesc.includes("Forbidden")
-    ) {
-      errDesc = `Telegram Error: ${data.description}. Please ensure @NGK_Signal_bot is added as an Administrator in channel '${channelId}' with 'Post Messages' permission.`;
+      telegramData = await response.json();
+    } catch (tgErr) {
+      console.warn("[Telegram Dispatch Warning]:", tgErr);
     }
-    throw new Error(errDesc);
   }
 
   return {
     success: true,
     signal: signalData,
-    telegramResponse: data
+    telegramResponse: telegramData
   };
 }
 
@@ -695,24 +684,33 @@ Respond strictly in valid JSON format:
 
   setInterval(async () => {
     try {
-      // 0. Auto-lock active signal if 1-hour validity window has expired
+      // 0. Auto-lock active signal if 1-hour validity window has expired, or auto-generate fresh signal if no active signal exists
+      let currentActiveSignalExists = false;
       try {
         const signalSnap = await getDoc(doc(db, "system", "copyTradeSignal"));
         if (signalSnap.exists()) {
           const sig = signalSnap.data();
           if (sig.isActive && sig.endTime) {
             if (Date.now() >= new Date(sig.endTime).getTime()) {
-              console.log(`[Signal Auto-Lock] Signal ${sig.code} expired after 1 hour. Locking signal in Firestore.`);
+              console.log(`[Signal Engine] Signal ${sig.code} expired after 1 hour window. Triggering fresh signal update.`);
               await setDoc(doc(db, "system", "copyTradeSignal"), {
                 isActive: false,
                 isLocked: true,
                 lockedAt: new Date().toISOString()
               }, { merge: true });
+            } else {
+              currentActiveSignalExists = true;
             }
           }
         }
+
+        // If no active signal is running right now, automatically trigger a new VIP signal!
+        if (!currentActiveSignalExists) {
+          console.log("[Signal Engine] No active signal found in database. Auto-generating fresh VIP Copy Trade Signal...");
+          await triggerSignalCodeBroadcast("signal_1");
+        }
       } catch (sigErr) {
-        console.warn("[Signal Auto-Lock Check Warning]:", sigErr);
+        console.warn("[Signal Heartbeat Warning]:", sigErr);
       }
 
       const now = new Date();
@@ -752,7 +750,9 @@ Respond strictly in valid JSON format:
 
       const config = snap.data();
       const { autoPosterActive, botToken, channelId, autoPosterInterval } = config;
-      if (!autoPosterActive || !botToken || !channelId) return;
+      // Default autoPosterActive to true if botToken is set
+      const isAutoActive = autoPosterActive !== undefined ? autoPosterActive : true;
+      if (!isAutoActive || !botToken || !channelId) return;
 
       const nowMs = Date.now();
       let nextPostAt = config.nextPostAt;
@@ -760,16 +760,16 @@ Respond strictly in valid JSON format:
       // If nextPostAt is empty/missing, initialize it to the current time to trigger immediately
       if (!nextPostAt) {
         nextPostAt = new Date(nowMs).toISOString();
-        await setDoc(doc(db, "system", "telegram_config"), { nextPostAt }, { merge: true });
+        await setDoc(doc(db, "system", "telegram_config"), { nextPostAt, autoPosterActive: true }, { merge: true });
       }
 
       const nextPostMs = new Date(nextPostAt).getTime();
       if (nowMs >= nextPostMs) {
         const lastPosterIndex = config.lastPosterIndex || 0;
-        const intervalHrs = autoPosterInterval || 2.5;
+        const intervalHrs = autoPosterInterval || 1; // Default to 1 hour frequency
         const futurePostAt = new Date(nowMs + intervalHrs * 60 * 60 * 1000).toISOString();
         
-        console.log(`[AutoPoster] Heartbeat matches schedule. Executing post index ${lastPosterIndex} to channel ${channelId}`);
+        console.log(`[AutoPoster] Executing post index ${lastPosterIndex} to channel ${channelId}`);
         
         try {
           // Execute the Telegram sendMessage post
@@ -791,9 +791,10 @@ Respond strictly in valid JSON format:
           const errMsg = postErr.message || String(postErr);
           console.warn(`[AutoPoster Warning]: ${errMsg}`);
 
-          // Postpone next retry so we don't spam errors every minute
+          // Retry sooner (in 3 minutes) if error occurs rather than postponing hours
+          const retryAt = new Date(nowMs + 3 * 60 * 1000).toISOString();
           await setDoc(doc(db, "system", "telegram_config"), {
-            nextPostAt: futurePostAt,
+            nextPostAt: retryAt,
             lastError: errMsg,
             updatedAt: new Date(nowMs).toISOString()
           }, { merge: true });
